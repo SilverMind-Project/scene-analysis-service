@@ -1,0 +1,71 @@
+# scene-analysis-service default configuration
+# All values can be overridden via environment variables prefixed with SAS_
+# (e.g. SAS_DEVICE=cuda, SAS_YOLO_MODEL_NAME=yolo26x.pt)
+
+# ── Device ────────────────────────────────────────────────────────────────────
+# auto      CUDA -> XPU -> CPU (highest-capability available)
+# cuda      NVIDIA GPU via PyTorch CUDA
+# xpu       Intel Arc GPU via Intel Extension for PyTorch (IPEX)
+# openvino  Intel OpenVINO — PyTorch components (Florence-2, CLIP) fall back
+#           to CPU; YOLO can use OpenVINO natively with a _openvino_model/ export
+# vulkan    Experimental Vulkan EP via ONNX Runtime; PyTorch falls back to CPU
+# cpu       CPU fallback
+device: auto
+
+# ── Inference backend ─────────────────────────────────────────────────────────
+# ultralytics   Use Ultralytics YOLO (supports .pt, .onnx, openvino formats)
+# onnxruntime   Use onnxruntime.InferenceSession directly with explicit EP
+#               control.  Requires a pre-exported ONNX model — see below.
+inference_backend: ultralytics
+
+# ── ONNX Runtime execution providers (inference_backend=onnxruntime only) ─────
+# Leave empty to derive from the device setting automatically:
+#   cuda     -> [CUDAExecutionProvider, CPUExecutionProvider]
+#   xpu      -> [OpenVINOExecutionProvider, CPUExecutionProvider]
+#   openvino -> [OpenVINOExecutionProvider, CPUExecutionProvider]
+#   vulkan   -> [VulkanExecutionProvider, CPUExecutionProvider]
+#   cpu      -> [CPUExecutionProvider]
+#
+# Override explicitly if needed:
+#   ort_providers: [OpenVINOExecutionProvider, CPUExecutionProvider]
+ort_providers: []
+
+# Square input size passed to OnnxRuntimeDetector (must match the ONNX export).
+ort_input_size: 640
+
+# ── Object detection (YOLO26x) ────────────────────────────────────────────────
+# YOLO26x is the highest-accuracy model in the YOLO26 family.
+# For lighter alternatives use yolo26l.pt or yolo26m.pt.
+# Refer to https://docs.ultralytics.com/ for current benchmark numbers.
+#
+# To use the ONNX Runtime backend, export first:
+#   uv run python -c "from ultralytics import YOLO; YOLO('yolo26x.pt').export(format='onnx')"
+# Then set: inference_backend: onnxruntime, yolo_model_name: yolo26x.onnx
+#
+# For Intel Arc via OpenVINO (Ultralytics native):
+#   uv run python -c "from ultralytics import YOLO; YOLO('yolo26x.pt').export(format='openvino')"
+# Then set: yolo_model_name: yolo26x_openvino_model/
+yolo_enabled: true
+yolo_model_name: "yolo26x.pt"
+yolo_confidence_threshold: 0.25
+yolo_iou_threshold: 0.45
+yolo_max_detections: 100
+
+# ── Scene description (Florence-2-large) ──────────────────────────────────────
+florence_enabled: true
+florence_model_name: "microsoft/Florence-2-large"
+florence_task: "<DETAILED_CAPTION>"   # or <CAPTION>, <OD>, etc.
+
+# ── Image embeddings (CLIP ViT-L/14 via OpenCLIP) ────────────────────────────
+clip_enabled: true
+clip_model_name: "ViT-L-14"
+clip_pretrained: "openai"
+
+# ── Hazard detection ──────────────────────────────────────────────────────────
+hazards_config_path: "config/hazards.yaml"
+
+# ── Service ───────────────────────────────────────────────────────────────────
+host: "0.0.0.0"
+port: 8100
+log_level: "info"
+max_image_size_px: 1920   # longest edge; larger images are downscaled before inference

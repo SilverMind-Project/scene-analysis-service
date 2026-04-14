@@ -1,0 +1,84 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scene-analysis-service"
+version = "0.1.0"
+requires-python = ">=3.13"
+description = "Fast scene analysis: object detection, structured description, and image embeddings."
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pyyaml>=6.0",
+    "pillow>=11.0",
+    "httpx>=0.28",
+    "numpy>=2.1",
+    "python-multipart>=0.0.18",
+]
+
+[project.optional-dependencies]
+# Full inference stack (CPU PyTorch).
+# For NVIDIA CUDA, also run: uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# For Intel Arc (XPU), also install the intel extra below.
+inference = [
+    # Object detection (YOLO26x - Ultralytics)
+    "ultralytics>=8.4",
+    # Structured scene description (Florence-2-large)
+    "transformers>=4.46",
+    "timm>=1.0",
+    # Dense image embeddings (CLIP ViT-L/14)
+    "open_clip_torch>=2.28",
+    # Base CPU torch; override with the cuda or intel extras for GPU acceleration
+    "torch>=2.5",
+    "torchvision>=0.20",
+]
+# NVIDIA CUDA acceleration (installs torch+cuda wheels from PyTorch index).
+cuda = [
+    "scene-analysis-service[inference]",
+]
+# Intel Arc GPU acceleration via Intel Extension for PyTorch (IPEX).
+# Enables device=xpu for YOLO, Florence-2, and CLIP.
+intel = [
+    "scene-analysis-service[inference]",
+    "intel-extension-for-pytorch>=2.3",
+]
+# ONNX Runtime — used by the onnxruntime inference_backend for YOLO.
+# Includes the OpenVINO execution provider for Intel Arc.
+# Pair with openvino for the full Intel Arc stack.
+onnxruntime = [
+    "onnxruntime>=1.18",
+    "openvino>=2024.1",
+]
+# OpenVINO standalone tools (model export, optimum-intel for Florence-2/CLIP).
+openvino = [
+    "openvino>=2024.1",
+    "optimum[openvino]>=1.18",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "ruff>=0.8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["B008"]  # FastAPI Depends() calls in function defaults
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

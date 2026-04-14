@@ -1,0 +1,36 @@
+# Hazard detection rules
+# Each rule specifies one or more YOLO class labels that constitute a hazard
+# when detected, with an optional context (e.g. only hazardous near certain objects).
+#
+# Fields:
+#   name:         Human-readable hazard name
+#   labels:       List of YOLO class names that trigger this hazard
+#   severity:     low | medium | high | critical
+#   near_labels:  Optional list; hazard fires only when a triggering label is
+#                 found within proximity_px pixels of one of these labels.
+#   proximity_px: Pixel distance threshold for near_labels (default: 200)
+#   description:  Plain-English description surfaced in the API response
+
+hazards:
+  - name: fire
+    labels: [fire, flame]
+    severity: critical
+    description: "Active fire or open flame detected in frame."
+
+  - name: person_on_floor
+    labels: [person]
+    severity: high
+    description: "Person detected in a lying/fallen posture (bbox aspect ratio check)."
+    # Aspect-ratio heuristic: width > height * 1.5 suggests prone/fallen.
+    aspect_ratio_min: 1.5
+
+  - name: stove_unattended
+    labels: [oven, microwave]
+    severity: medium
+    near_labels: []
+    description: "Cooking appliance detected (may be unattended)."
+
+  - name: medication_access
+    labels: [bottle, cup]
+    severity: low
+    description: "Medication-like container detected; review if context is relevant."
