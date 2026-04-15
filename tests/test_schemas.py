@@ -10,12 +10,9 @@ from pydantic import ValidationError
 
 from app.models.schemas import (
     AnalyzeResponse,
-    DetectResponse,
     DetectionOut,
-    DescribeResponse,
-    EmbedResponse,
-    HealthResponse,
     HazardAlertOut,
+    HealthResponse,
 )
 
 

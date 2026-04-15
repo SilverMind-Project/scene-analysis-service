@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
-from app.models.schemas import DetectResponse, DetectionOut
+from app.models.schemas import DetectionOut, DetectResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

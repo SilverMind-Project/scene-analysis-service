@@ -66,7 +66,7 @@ class Settings:
         try:
             return self._data[name]
         except KeyError:
-            raise AttributeError(f"Settings has no attribute {name!r}")
+            raise AttributeError(f"Settings has and no attribute {name!r}")
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"Settings({self._data!r})"

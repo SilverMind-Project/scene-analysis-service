@@ -70,7 +70,10 @@ class FlorenceDescriber(SceneDescriber):
     ) -> None:
         try:
             import torch
-            from transformers import AutoModelForCausalLM, AutoProcessor  # type: ignore[import-untyped]
+            from transformers import (  # type: ignore[import-untyped]
+                AutoModelForCausalLM,
+                AutoProcessor,
+            )
         except ImportError as exc:
             raise RuntimeError(
                 "transformers and torch are required for FlorenceDescriber. "

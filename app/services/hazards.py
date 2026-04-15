@@ -25,7 +25,7 @@ the detection is only flagged if ``bbox_width / bbox_height >= aspect_ratio_min`
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 

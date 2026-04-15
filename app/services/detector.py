@@ -370,7 +370,7 @@ class OnnxRuntimeDetector(Detector):
 
     def _preprocess(
         self, image: Image.Image
-    ) -> "tuple[Any, float, int, int]":
+    ) -> tuple[Any, float, int, int]:
         """Letterbox-resize and normalise to a float32 NCHW tensor.
 
         Returns:
@@ -398,7 +398,7 @@ class OnnxRuntimeDetector(Detector):
 
     @staticmethod
     def _nms(
-        boxes: "Any", scores: "Any", iou_threshold: float
+        boxes: Any, scores: Any, iou_threshold: float
     ) -> list[int]:
         """Class-agnostic greedy NMS in pure NumPy.
 

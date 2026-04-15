@@ -8,17 +8,15 @@ files are required.  Tests focus on orchestration logic and the
 from __future__ import annotations
 
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 from PIL import Image
 
 from app.services.analyzer import AnalysisResult, SceneAnalyzer
 from app.services.describer import NullDescriber
-from app.services.detector import Detection, NullDetector
+from app.services.detector import NullDetector
 from app.services.embedder import NullEmbedder
 from app.services.hazards import HazardRuleEngine
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

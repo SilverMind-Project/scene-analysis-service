@@ -7,12 +7,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 from app.services.detector import Detection
-from app.services.hazards import HazardAlert, HazardRuleEngine
-
+from app.services.hazards import HazardRuleEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
