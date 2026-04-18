@@ -278,7 +278,7 @@ scene-analysis-service/
 │   ├── conftest.py            # null_analyzer + TestClient fixtures
 │   ├── test_analyzer.py       # SceneAnalyzer unit tests
 │   ├── test_api.py            # HTTP endpoint tests
-│   └── test_hazards.py        # HazardRuleEngine unit tests
+│   └── test_hazard_engine.py  # HazardRuleEngine unit tests
 ├── Dockerfile
 └── pyproject.toml
 ```

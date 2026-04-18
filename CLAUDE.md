@@ -1,4 +1,4 @@
-# scene-analysis-service — Claude guidance
+# scene-analysis-service - Claude guidance
 
 Standalone FastAPI microservice for multi-modal scene analysis. Part of the
 cognitive-companion monorepo (`/home/sriram/code/nanai/`).
@@ -47,7 +47,7 @@ uv run python -c "from ultralytics import YOLO; YOLO('yolo26x.pt').export(format
 # Export YOLO model to OpenVINO IR (for native Ultralytics OpenVINO path)
 uv run python -c "from ultralytics import YOLO; YOLO('yolo26x.pt').export(format='openvino')"
 
-# Build Docker image (CPU) — uses UV internally
+# Build Docker image (CPU) - uses UV internally
 docker build -t scene-analysis-service .
 
 # Build Docker image (with inference)
@@ -62,7 +62,7 @@ docker build --build-arg EXTRAS=inference -t scene-analysis-service .
 
 ```text
 app/
-├── config.py       Settings — YAML + SAS_ env overrides
+├── config.py       Settings - YAML + SAS_ env overrides
 ├── main.py         FastAPI factory + lifespan (model loading)
 ├── models/
 │   └── schemas.py  Pydantic I/O models
@@ -73,7 +73,7 @@ app/
     ├── describer.py    SceneDescriber ABC + FlorenceDescriber + NullDescriber
     ├── embedder.py     ImageEmbedder ABC + CLIPEmbedder + NullEmbedder
     ├── device.py       resolve_device() + onnxruntime_providers()
-    └── hazards.py      HazardRuleEngine — pure YAML-driven rule evaluator
+    └── hazards.py      HazardRuleEngine - pure YAML-driven rule evaluator
 ```
 
 ### Core pattern: ABC + Null implementation
@@ -156,7 +156,7 @@ override the default derivation.
 `inference_backend` in config selects the YOLO detector implementation:
 
 - `ultralytics` (default): `UltralyticsDetector` wraps `ultralytics.YOLO`.
-  Accepts `.pt`, `.onnx`, or `_openvino_model/` model names — Ultralytics
+  Accepts `.pt`, `.onnx`, or `_openvino_model/` model names - Ultralytics
   handles the format automatically.
 
 - `onnxruntime`: `OnnxRuntimeDetector` uses `onnxruntime.InferenceSession`
@@ -180,22 +180,21 @@ SAS_INFERENCE_BACKEND=onnxruntime
 SAS_YOLO_MODEL_NAME=yolo26x.onnx
 ```
 
-`Settings.__getattr__` raises `AttributeError` for missing keys — do not add
+`Settings.__getattr__` raises `AttributeError` for missing keys - do not add
 fallback logic, raise early.
 
 ---
 
 ## Tests
 
-- **No inference deps required** — all tests use `NullDetector`, `NullDescriber`,
+- **No inference deps required** - all tests use `NullDetector`, `NullDescriber`,
   `NullEmbedder` via fixtures in `tests/conftest.py`.
-- `asyncio_mode = "auto"` is set in `pyproject.toml` — all test methods can be
+- `asyncio_mode = "auto"` is set in `pyproject.toml` - all test methods can be
   `async def` without decoration.
 - `null_analyzer` fixture creates a `SceneAnalyzer` with all `Null*` components
   and a non-existent hazards path.
 - `test_client` fixture creates the app, pre-assigns `null_analyzer` to
-  `app.state`, then uses `with TestClient(app) as client:`. The lifespan still
-  runs but also produces `Null*` components when inference deps are absent.
+  `app.state`, then uses `with TestClient(app, raise_server_exceptions=True) as client:`. The lifespan is bypassed to avoid loading real models.
 
 ### Class property override rule
 
@@ -204,10 +203,10 @@ This poisons all subsequent instantiations of that class within the test
 session. Use local subclasses instead:
 
 ```python
-# BAD — mutates NullDetector for all later tests
+# BAD - mutates NullDetector for all later tests
 type(detector).is_available = property(lambda self: True)
 
-# GOOD — isolated subclass
+# GOOD - isolated subclass
 class _SpyDetector(NullDetector):
     @property
     def is_available(self) -> bool:
@@ -224,7 +223,7 @@ class _SpyDetector(NullDetector):
   `RuntimeError` from missing deps should be caught.
 - Logging uses the stdlib `logging` module (not structlog). Format:
   `logger.info("event_name key=%s", value)`.
-- `to_dict()` methods on dataclasses are the serialisation boundary — keep
+- `to_dict()` methods on dataclasses are the serialisation boundary - keep
   Pydantic schemas in `models/schemas.py` and service dataclasses in
   `services/*.py` separately.
 - Image downscaling happens in `SceneAnalyzer._load_image()` before any
@@ -234,9 +233,9 @@ class _SpyDetector(NullDetector):
   `ort_input_size` (default 640).
 - `HazardRuleEngine` must remain pure (no I/O in `evaluate()`). Add new
   constraint types as `_check_*` static/instance methods.
-- Use `Image.Resampling.LANCZOS` / `Image.Resampling.BILINEAR` — the bare
+- Use `Image.Resampling.LANCZOS` / `Image.Resampling.BILINEAR` - the bare
   `Image.LANCZOS` / `Image.BILINEAR` constants are deprecated since Pillow 10.
-- Use `torch.amp.autocast(device_type=...)` — `torch.cuda.amp.autocast()` is
+- Use `torch.amp.autocast(device_type=...)` - `torch.cuda.amp.autocast()` is
   deprecated since PyTorch 2.4.
 
 ---
@@ -256,7 +255,7 @@ class _SpyDetector(NullDetector):
 
 1. Add a `_check_<rule_type>()` method to `HazardRuleEngine`.
 2. Call it from `_check_rule()` using a new YAML key.
-3. Add a test case to `tests/test_hazards.py`.
+3. Add a test case to `tests/test_hazard_engine.py`.
 
 ### Change the default YOLO model
 
@@ -294,26 +293,26 @@ on Intel Arc, use `device: xpu` with the `intel` extra (IPEX) instead.
 
 ## Known tech debt
 
-Items intentionally deferred — fix before shipping anything performance-critical.
+Items intentionally deferred - fix before shipping anything performance-critical.
 
 | # | File | Issue | Effort |
 | - | ---- | ----- | ------ |
 | 1 | `services/analyzer.py` | `analyze()` is synchronous; heavy CPU inference (Florence-2 on CPU) blocks the uvicorn event loop. Wrap each component call in `asyncio.to_thread` and make `analyze` async. | Medium |
 | 2 | `services/device.py` | `onnxruntime_providers()` returns CPU fallback for `auto` when torch isn't installed, even if an ORT CUDA build is present. Should probe ORT providers directly. | Small |
-| 3 | `app/config.py` | `_coerce()` has no list handler — `SAS_ORT_PROVIDERS` cannot be set via env var (the YAML default is a list, so the env key is silently skipped). | Small |
-| 4 | `pyproject.toml` | The `cuda` extra is a no-op alias for `inference` — no CUDA-specific wheels are added. The real CUDA install still requires a manual `uv pip install torch ...` step, making the extra misleading. | Small |
-| 5 | `tests/test_analyzer.py` | `_SpyDetector._called` counter in `TestRunFlags` is dead code — the MagicMock wrapper is used for all assertions. Remove the counter. | Trivial |
+| 3 | `app/config.py` | `_coerce()` has no list handler - `SAS_ORT_PROVIDERS` cannot be set via env var (the YAML default is a list, so the env key is silently skipped). | Small |
+| 4 | `pyproject.toml` | The `cuda` extra is a no-op alias for `inference` - no CUDA-specific wheels are added. The real CUDA install still requires a manual `uv pip install torch ...` step, making the extra misleading. | Small |
+| 5 | `tests/test_analyzer.py` | `_SpyDetector._called` counter in `TestRunFlags` is dead code - the MagicMock wrapper is used for all assertions. Remove the counter. | Trivial |
 | 6 | `services/detector.py` | Post-processing NMS is reimplemented in pure NumPy for `OnnxRuntimeDetector`. When Ultralytics ships YOLO26 with end-to-end NMS baked into the ONNX export, this can be removed. | Deferred |
-| 7 | `app/models/schemas.py` | `EmbedResponse` schema exists but there is no `/embed` standalone endpoint — only `/analyze` returns embeddings. Add `app/routers/embed.py`. | Small |
+| 7 | `app/models/schemas.py` | `EmbedResponse` schema exists but there is no `/embed` standalone endpoint - only `/analyze` returns embeddings. Add `app/routers/embed.py`. | Small |
 
 ---
 
 ## Relationship to cognitive-companion
 
-- `cognitive-companion/backend/integrations/scene_analysis_client.py` —
+- `cognitive-companion/backend/integrations/scene_analysis_client.py` -
   HTTP client that calls this service
-- `cognitive-companion/backend/steps/builtin/scene_analysis.py` —
+- `cognitive-companion/backend/steps/builtin/scene_analysis.py` -
   Pipeline step that invokes the client
-- `cognitive-companion/backend/steps/base.py` `ServiceContainer` —
+- `cognitive-companion/backend/steps/base.py` `ServiceContainer` -
   holds `scene_analysis_client`
-- `cognitive-companion/docker-compose.yml` — commented-out service block
+- `cognitive-companion/docker-compose.yml` - commented-out service block
