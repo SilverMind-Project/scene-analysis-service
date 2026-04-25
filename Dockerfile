@@ -18,10 +18,10 @@
 #   docker build --build-arg EXTRAS=inference -t scene-analysis-service .
 #
 # Run (CPU):
-#   docker run -p 8100:8100 scene-analysis-service
+#   docker run -p 8300:8300 scene-analysis-service
 #
 # Run (GPU):
-#   docker run --gpus all -p 8100:8100 -e SAS_DEVICE=cuda scene-analysis-service
+#   docker run --gpus all -p 8300:8300 -e SAS_DEVICE=cuda scene-analysis-service
 
 # ── UV binary ──────────────────────────────────────────────────────────────
 FROM ghcr.io/astral-sh/uv:latest AS uv
@@ -72,10 +72,10 @@ COPY --chown=sas:sas . .
 
 USER sas
 
-EXPOSE 8100
+EXPOSE 8300
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')" \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8300/health')" \
     || exit 1
 
-ENTRYPOINT ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
+ENTRYPOINT ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8300"]

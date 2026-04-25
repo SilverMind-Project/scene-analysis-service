@@ -31,14 +31,14 @@ dependencies are not installed (graceful degradation via `Null*` stubs).
 
 ```bash
 uv sync
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8100
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
 ```
 
 ### With inference dependencies (CPU)
 
 ```bash
 uv sync --extra inference
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8100
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
 ```
 
 ### NVIDIA GPU (CUDA)
@@ -47,7 +47,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8100
 uv sync --extra inference
 uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 # Check https://pytorch.org/get-started/locally/ for the current CUDA wheel URL.
-SAS_DEVICE=cuda uv run uvicorn app.main:app --host 0.0.0.0 --port 8100
+SAS_DEVICE=cuda uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
 ```
 
 ### Intel Arc GPU
@@ -59,7 +59,7 @@ integration (XPU) or explicit execution-provider control (ONNX Runtime).
 
 ```bash
 uv sync --extra intel
-SAS_DEVICE=xpu uv run uvicorn app.main:app --host 0.0.0.0 --port 8100
+SAS_DEVICE=xpu uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
 ```
 
 Requires Intel Extension for PyTorch (IPEX) and an Arc-compatible driver.
@@ -93,14 +93,14 @@ reproducible package installation.
 
 ```bash
 docker build -t scene-analysis-service .
-docker run -p 8100:8100 scene-analysis-service
+docker run -p 8300:8300 scene-analysis-service
 ```
 
 ### Docker (GPU)
 
 ```bash
 docker build --build-arg EXTRAS=inference -t scene-analysis-service .
-docker run --gpus all -p 8100:8100 -e SAS_DEVICE=cuda scene-analysis-service
+docker run --gpus all -p 8300:8300 -e SAS_DEVICE=cuda scene-analysis-service
 ```
 
 ---
@@ -129,7 +129,7 @@ All `POST` endpoints accept `multipart/form-data` with an `image` field
 ### Example
 
 ```bash
-curl -s -X POST http://localhost:8100/analyze \
+curl -s -X POST http://localhost:8300/analyze \
   -F "image=@photo.jpg" \
   "?run_embed=false" | jq .
 ```
@@ -180,7 +180,7 @@ SAS_PORT=8200
 | `clip_pretrained` | `openai` | OpenCLIP pretrained weights tag |
 | `hazards_config_path` | `config/hazards.yaml` | Hazard rules file |
 | `max_image_size_px` | `1920` | Longest edge limit; larger images are downscaled |
-| `port` | `8100` | Listening port |
+| `port` | `8300` | Listening port |
 | `log_level` | `info` | `debug \| info \| warning \| error` |
 
 ### Device and backend matrix
@@ -315,8 +315,8 @@ uv run ruff format app/ tests/
 
 With the service running, visit:
 
-- Swagger UI: `http://localhost:8100/docs`
-- ReDoc: `http://localhost:8100/redoc`
+- Swagger UI: `http://localhost:8300/docs`
+- ReDoc: `http://localhost:8300/redoc`
 
 ---
 
@@ -325,7 +325,7 @@ With the service running, visit:
 The cognitive-companion backend communicates with this service via
 `SceneAnalysisClient` (`backend/integrations/scene_analysis_client.py`).
 Enable it by setting `scene_analysis.enabled: true` and
-`scene_analysis.base_url: http://scene-analysis:8100` in the backend's
+`scene_analysis.base_url: http://scene-analysis:8300` in the backend's
 `settings.yaml`.
 
 The `scene_analysis` pipeline step (`backend/steps/builtin/scene_analysis.py`)

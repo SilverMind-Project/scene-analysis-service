@@ -24,7 +24,7 @@ services:
     container_name: scene-analysis-service
     restart: unless-stopped
     ports:
-      - "8100:8100"
+      - "8300:8300"
     environment:
       SAS_DEVICE: "auto"          # auto | cuda | cpu | openvino
       SAS_YOLO_ENABLED: "true"
@@ -34,7 +34,7 @@ services:
     volumes:
       - scene-analysis-models:/root/.cache   # HuggingFace + YOLO model cache
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8300/health')"]
       interval: 15s
       timeout: 5s
       retries: 3

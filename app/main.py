@@ -88,6 +88,6 @@ if __name__ == "__main__":  # pragma: no cover
     uvicorn.run(
         "app.main:app",
         host=cfg.get("host", "0.0.0.0"),
-        port=cfg.get("port", 8100),
+        port=cfg.get("port", 8300),
         reload=False,
     )

@@ -29,7 +29,7 @@ uv sync --extra onnxruntime
 uv sync --group dev
 
 # Run (development)
-uv run uvicorn app.main:app --reload --port 8100
+uv run uvicorn app.main:app --reload --port 8300
 
 # Lint
 uv run ruff check app/ tests/
