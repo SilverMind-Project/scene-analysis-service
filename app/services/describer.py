@@ -99,6 +99,10 @@ class FlorenceDescriber(SceneDescriber):
         inputs = self._processor(text=self._task, images=image, return_tensors="pt").to(
             self._device
         )
+        
+        if "pixel_values" in inputs:
+            inputs["pixel_values"] = inputs["pixel_values"].to(self._model.dtype)
+
         with self._torch.no_grad():
             generated_ids = self._model.generate(
                 input_ids=inputs["input_ids"],
