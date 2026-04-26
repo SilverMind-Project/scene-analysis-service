@@ -67,6 +67,9 @@ RUN groupadd -r sas && useradd -r -g sas sas
 WORKDIR /app
 COPY --chown=sas:sas . .
 
+# Writable cache directory owned by sas (HuggingFace, YOLO, torch).
+RUN mkdir -p /app/.cache && chown sas:sas /app/.cache
+
 # Default config directory is expected at /app/config/
 # Mount an alternative with: -v /host/config:/app/config
 

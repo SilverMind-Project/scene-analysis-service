@@ -3,16 +3,14 @@
 # Multi-modal scene analysis: YOLO object detection, Florence-2 structured
 # descriptions, and CLIP image embeddings.
 #
-# Usage (CPU):
+# Usage:
 #   docker compose up -d
-#
-# Usage (GPU):
-#   docker compose --profile gpu up -d
 #
 # Build with inference deps (required for actual model inference):
 #   docker compose build --build-arg EXTRAS=inference
 #
-# Requires: NVIDIA Container Toolkit for GPU profile.
+# Requires: NVIDIA Container Toolkit for GPU support.
+# Place model weights (e.g. yolo26x.pt) in ./data/ before starting.
 
 services:
   scene-analysis:
@@ -20,19 +18,31 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        EXTRAS: ""          # set to "inference" to include torch/ultralytics
+        EXTRAS: "inference"          # set to "inference" to include torch/ultralytics
     container_name: scene-analysis-service
     restart: unless-stopped
     ports:
       - "8300:8300"
     environment:
-      SAS_DEVICE: "auto"          # auto | cuda | cpu | openvino
+      SAS_DEVICE: "auto"                            # auto | cuda | cpu | openvino
       SAS_YOLO_ENABLED: "true"
+      SAS_YOLO_MODEL_NAME: "/app/data/yolo26x.pt"  # pre-loaded from ./data mount
       SAS_FLORENCE_ENABLED: "true"
       SAS_CLIP_ENABLED: "true"
       SAS_LOG_LEVEL: "info"
+      HF_HOME: "/app/.cache/huggingface"
+      TORCH_HOME: "/app/.cache/torch"
+      YOLO_CONFIG_DIR: "/app/.cache/ultralytics"
     volumes:
-      - scene-analysis-models:/root/.cache   # HuggingFace + YOLO model cache
+      - ./data:/app/data:ro                  # local model weights (read-only)
+      - scene-analysis-models:/app/.cache    # HuggingFace + torch + YOLO cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8300/health')"]
       interval: 15s

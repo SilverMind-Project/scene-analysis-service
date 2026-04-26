@@ -26,8 +26,9 @@ inference = [
     # Object detection (YOLO26x - Ultralytics)
     "ultralytics>=8.4",
     # Structured scene description (Florence-2-large)
-    "transformers>=4.46",
+    "transformers>=4.46,<4.47",
     "timm>=1.0",
+    "einops>=0.8",
     # Dense image embeddings (CLIP ViT-L/14)
     "open_clip_torch>=2.28",
     # Base CPU torch; override with the cuda or intel extras for GPU acceleration
