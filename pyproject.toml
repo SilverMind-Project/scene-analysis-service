@@ -16,10 +16,15 @@ dependencies = [
     "httpx>=0.28",
     "numpy>=2.1",
     "python-multipart>=0.0.18",
+    "triton-shared",
 ]
 
 [project.optional-dependencies]
-# Full inference stack (CPU PyTorch).
+# Triton gRPC client (required when inference_backend=triton).
+triton = [
+    "tritonclient[all]>=2.51.0",
+]
+# Full inference stack (CPU PyTorch) — for in-process backends and CLIP/Florence.
 # For NVIDIA CUDA, also run: uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 # For Intel Arc (XPU), also install the intel extra below.
 inference = [
@@ -57,6 +62,9 @@ openvino = [
     "openvino>=2024.1",
     "optimum[openvino]>=1.18",
 ]
+
+[tool.uv.sources]
+triton-shared = { path = "../triton-shared" }
 
 [dependency-groups]
 dev = [

@@ -172,6 +172,21 @@ def create_from_settings(cfg: Settings) -> SceneAnalyzer:
     device = resolve_device(device_setting)
 
     inference_backend: str = cfg.get("inference_backend", "ultralytics")
+    triton_url: str = cfg.get("triton_url", "")
+
+    # Resolve Triton client when triton backend is requested.
+    triton_client = None
+    if inference_backend == "triton" and triton_url:
+        try:
+            from triton_shared.client.grpc import TritonGrpcClient
+
+            triton_client = TritonGrpcClient(triton_url)
+            logger.info("triton_client_created url=%s", triton_url)
+        except ImportError as exc:
+            logger.warning(
+                "triton_client_import_failed error=%s falling_back=null_detector", exc
+            )
+
     ort_providers_cfg: list[str] = cfg.get("ort_providers", []) or []
     ort_providers = (
         ort_providers_cfg
@@ -181,7 +196,7 @@ def create_from_settings(cfg: Settings) -> SceneAnalyzer:
 
     detector = build_detector(
         enabled=cfg.get("yolo_enabled", True),
-        model_name=cfg.get("yolo_model_name", "yolo26x.pt"),
+        model_name=cfg.get("yolo_model_name", "person-detector"),
         device=device,
         confidence_threshold=cfg.get("yolo_confidence_threshold", 0.25),
         iou_threshold=cfg.get("yolo_iou_threshold", 0.45),
@@ -189,6 +204,7 @@ def create_from_settings(cfg: Settings) -> SceneAnalyzer:
         backend=inference_backend,
         ort_providers=ort_providers if inference_backend == "onnxruntime" else None,
         ort_input_size=cfg.get("ort_input_size", 640),
+        triton_client=triton_client,
     )
     describer = build_describer(
         enabled=cfg.get("florence_enabled", True),

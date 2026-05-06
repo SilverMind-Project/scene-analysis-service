@@ -448,22 +448,25 @@ def build_detector(
     backend: str = "ultralytics",
     ort_providers: list[str] | None = None,
     ort_input_size: int = 640,
+    triton_client: Any | None = None,
 ) -> Detector:
     """Construct a :class:`Detector` from config values.
 
     Args:
         enabled: When ``False`` a :class:`NullDetector` is returned immediately.
         model_name: Ultralytics model name / path, or path to ``.onnx`` file
-            when ``backend="onnxruntime"``.
+            when ``backend="onnxruntime"``, or Triton model name when
+            ``backend="triton"``.
         device: PyTorch device for the ``ultralytics`` backend.
         confidence_threshold: Minimum detection confidence.
         iou_threshold: IoU threshold for NMS.
         max_detections: Cap on returned detections per image.
-        backend: ``"ultralytics"`` (default) or ``"onnxruntime"``.
+        backend: ``"ultralytics"`` (default), ``"onnxruntime"``, or ``"triton"``.
         ort_providers: Explicit ORT execution provider list for the
             ``onnxruntime`` backend.  ``None`` defers to
             :func:`~app.services.device.onnxruntime_providers`.
         ort_input_size: Square input dimension for the ONNX model (default 640).
+        triton_client: Pre-connected Triton client for the ``triton`` backend.
 
     Returns:
         A ready :class:`Detector`, or :class:`NullDetector` on failure.
@@ -471,6 +474,24 @@ def build_detector(
     if not enabled:
         logger.info("yolo_disabled returning_null_detector")
         return NullDetector()
+
+    if backend == "triton":
+        if triton_client is None:
+            logger.warning("triton_backend_requires_client returning_null_detector")
+            return NullDetector()
+        try:
+            from app.services.triton_detector import TritonDetector
+
+            return TritonDetector(
+                client=triton_client,
+                model_name=model_name,
+                confidence_threshold=confidence_threshold,
+            )
+        except ImportError as exc:
+            logger.warning(
+                "triton_detector_import_failed error=%s returning_null_detector", exc
+            )
+            return NullDetector()
 
     if backend == "onnxruntime":
         onnx_path = Path(model_name)
