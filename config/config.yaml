@@ -51,8 +51,14 @@ yolo_iou_threshold: 0.45
 yolo_max_detections: 100
 
 # ── Scene description (Florence-2-large) ──────────────────────────────────────
+# Backend: "triton" (calls florence-2 model on Triton Python backend)
+#          or "transformers" (in-process via HuggingFace Transformers + PyTorch).
+# model_name is the Triton model name when backend=triton.
+# tokenizer_dir points to the directory containing tokenizer.json.
 florence_enabled: true
-florence_model_name: "microsoft/Florence-2-large"
+florence_backend: triton
+florence_model_name: "florence-2"
+florence_tokenizer_dir: "../continuous-tracking/triton-models/florence-2/1"
 florence_task: "<DETAILED_CAPTION>"   # or <CAPTION>, <OD>, etc.
 
 # ── Image embeddings (CLIP ViT-L/14) ──────────────────────────────────────────

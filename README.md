@@ -1,107 +1,65 @@
 # scene-analysis-service
 
-A standalone FastAPI microservice for real-time multi-modal scene analysis.
-Provides fast object detection (YOLO26x), structured scene description
+A lightweight FastAPI microservice for real-time multi-modal scene analysis.
+All inference runs via **Triton Inference Server** (ONNX, INT8-quantized)
+shared with the `continuous-tracking` system. No GPU runtime or PyTorch
+required in this container.
+
+Provides object detection (YOLO26L), structured scene description
 (Florence-2-large), dense image embeddings (CLIP ViT-L/14), and
 YAML-configured hazard alerting via a single HTTP API.
-
-Designed to run alongside the cognitive-companion backend and be called from
-the `scene_analysis` pipeline step.
 
 ---
 
 ## Features
 
-| Component | Model | Notes |
-| --------- | ----- | ----- |
-| Object detection | YOLO26x (Ultralytics) | Up to 100 detections per frame |
-| Scene description | Florence-2-large (Microsoft) | Structured natural-language caption |
-| Image embeddings | CLIP ViT-L/14 (OpenCLIP) | 768-dim L2-normalised vector |
-| Hazard alerting | Rule engine (YAML) | Label match + aspect-ratio + proximity checks |
+| Component | Model | Backend | Notes |
+| --------- | ----- | ------- | ----- |
+| Object detection | YOLO26L | Triton (ONNX Runtime, INT8) | Up to 100 detections per frame, NMS-free |
+| Scene description | Florence-2-large | Triton (Python backend, INT8) | Structured natural-language caption |
+| Image embeddings | CLIP ViT-L/14 | Triton (ONNX Runtime, INT8) | 768-dim L2-normalised vector |
+| Hazard alerting | Rule engine (YAML) | In-process | Label match + aspect-ratio + proximity checks |
 
 All four components are optional and independently togglable via config or
-per-request flags. The service starts and remains healthy even when inference
-dependencies are not installed (graceful degradation via `Null*` stubs).
+per-request flags. The service starts and remains healthy even when Triton is
+unavailable (graceful degradation via `Null*` stubs).
 
 ---
 
 ## Quick start
 
-### Without inference dependencies (API only)
+### Prerequisites
+
+- Triton Inference Server running with the model repository from
+  `../continuous-tracking/triton-models/`. See that project's README for
+  model export/download and Triton setup.
+- Python 3.13+
+
+### With Triton (production)
+
+```bash
+uv sync --extra triton
+SAS_TRITON_URL=localhost:8001 uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
+```
+
+### Without Triton (API only, all Null stubs)
 
 ```bash
 uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
 ```
 
-### With inference dependencies (CPU)
+The service starts and all endpoints return empty results with
+`*_available: false`.
 
-```bash
-uv sync --extra inference
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
-```
-
-### NVIDIA GPU (CUDA)
-
-```bash
-uv sync --extra inference
-uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-# Check https://pytorch.org/get-started/locally/ for the current CUDA wheel URL.
-SAS_DEVICE=cuda uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
-```
-
-### Intel Arc GPU
-
-Two paths are available. Choose based on whether you want PyTorch-level
-integration (XPU) or explicit execution-provider control (ONNX Runtime).
-
-#### Path 1: IPEX XPU (all models on Intel Arc)
-
-```bash
-uv sync --extra intel
-SAS_DEVICE=xpu uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
-```
-
-Requires Intel Extension for PyTorch (IPEX) and an Arc-compatible driver.
-All three inference components (YOLO, Florence-2, CLIP) run on the XPU device.
-
-#### Path 2: ONNX Runtime with OpenVINO EP (YOLO on Intel Arc)
-
-```bash
-# Export the YOLO model to ONNX format first
-uv run python -c "from ultralytics import YOLO; YOLO('yolo26x.pt').export(format='onnx')"
-
-uv sync --extra onnxruntime
-```
-
-Then set in `config/config.yaml`:
-
-```yaml
-device: openvino
-inference_backend: onnxruntime
-yolo_model_name: "yolo26x.onnx"
-ort_providers: [OpenVINOExecutionProvider, CPUExecutionProvider]
-```
-
-Florence-2 and CLIP fall back to CPU on the `openvino` device. Use Path 1
-(IPEX) to run all models on Intel Arc.
-
-### Docker (CPU)
-
-The Docker image uses [UV](https://github.com/astral-sh/uv) for fast,
-reproducible package installation.
+### Docker
 
 ```bash
 docker build -t scene-analysis-service .
-docker run -p 8300:8300 scene-analysis-service
+docker run -p 8300:8300 -e SAS_TRITON_URL=triton:8001 scene-analysis-service
 ```
 
-### Docker (GPU)
-
-```bash
-docker build --build-arg EXTRAS=inference -t scene-analysis-service .
-docker run --gpus all -p 8300:8300 -e SAS_DEVICE=cuda scene-analysis-service
-```
+The Docker image is ~200 MB — no PyTorch, no GPU drivers.
 
 ---
 
@@ -156,7 +114,7 @@ Configuration is read from `config/config.yaml` at startup. Every key can be
 overridden with an environment variable prefixed `SAS_` (uppercased), e.g.:
 
 ```bash
-SAS_DEVICE=cuda
+SAS_TRITON_URL=triton:8001
 SAS_YOLO_ENABLED=false
 SAS_PORT=8200
 ```
@@ -165,88 +123,56 @@ SAS_PORT=8200
 
 | Key | Default | Description |
 | --- | ------- | ----------- |
-| `device` | `auto` | `auto \| cuda \| xpu \| openvino \| vulkan \| cpu` |
-| `inference_backend` | `ultralytics` | `ultralytics \| onnxruntime` |
-| `ort_providers` | `[]` | ONNX Runtime EP list (empty = derived from device) |
-| `ort_input_size` | `640` | Square input size for ONNX Runtime detector |
-| `yolo_enabled` | `true` | Enable YOLO detection |
-| `yolo_model_name` | `yolo26x.pt` | Model file: `.pt`, `.onnx`, or `_openvino_model/` |
+| `triton_url` | `""` | Triton gRPC endpoint (required for Triton backends) |
+| `inference_backend` | `triton` | Detector: `triton` / `ultralytics` / `onnxruntime` |
+| `yolo_model_name` | `person-detector` | Triton model name |
+| `clip_backend` | `triton` | Embedder: `triton` / `openclip` |
+| `clip_model_name` | `clip-vision` | Triton model name |
+| `florence_backend` | `triton` | Describer: `triton` / `transformers` |
+| `florence_model_name` | `florence-2` | Triton model name |
+| `florence_tokenizer_dir` | `../continuous-tracking/triton-models/florence-2/1` | Tokenizer path |
+| `device` | `auto` | PyTorch device (legacy backends only) |
 | `yolo_confidence_threshold` | `0.25` | Detection confidence floor |
-| `florence_enabled` | `true` | Enable Florence-2 description |
-| `florence_model_name` | `microsoft/Florence-2-large` | HuggingFace model ID |
-| `florence_task` | `<DETAILED_CAPTION>` | Florence prompt task token |
-| `clip_enabled` | `true` | Enable CLIP embedding |
-| `clip_model_name` | `ViT-L-14` | OpenCLIP model name |
-| `clip_pretrained` | `openai` | OpenCLIP pretrained weights tag |
-| `hazards_config_path` | `config/hazards.yaml` | Hazard rules file |
-| `max_image_size_px` | `1920` | Longest edge limit; larger images are downscaled |
+| `max_image_size_px` | `1920` | Longest edge limit; larger images downscaled |
 | `port` | `8300` | Listening port |
-| `log_level` | `info` | `debug \| info \| warning \| error` |
-
-### Device and backend matrix
-
-| Target hardware | `device` | `inference_backend` | Additional setup |
-| --------------- | -------- | ------------------- | ---------------- |
-| NVIDIA GPU | `cuda` | `ultralytics` | Install torch+cuda wheels |
-| Intel Arc (all models) | `xpu` | `ultralytics` | Install `intel` extra (IPEX) |
-| Intel Arc (YOLO only, explicit EP) | `openvino` | `onnxruntime` | Export ONNX model; install `onnxruntime` extra |
-| Vulkan (experimental) | `vulkan` | `onnxruntime` | ORT build with Vulkan EP |
-| CPU | `cpu` | `ultralytics` | No extras needed |
-
-### Hazard rules (`config/hazards.yaml`)
-
-Each rule matches one or more YOLO class labels and fires a `HazardAlert`
-when a detection satisfies all constraints:
-
-```yaml
-hazards:
-  - name: fire
-    labels: [fire, flame]
-    severity: critical
-    description: "Active fire or open flame detected."
-
-  - name: person_on_floor
-    labels: [person]
-    severity: high
-    description: "Person in fallen posture."
-    aspect_ratio_min: 1.5   # width/height >= 1.5 -> likely prone
-
-  - name: medication_near_stove
-    labels: [bottle]
-    severity: medium
-    near_labels: [oven]
-    proximity_px: 200        # L-infinity distance between bbox centres
-    description: "Medication-like container near cooking appliance."
-```
-
-Rule fields:
-
-| Field | Required | Description |
-| ----- | -------- | ----------- |
-| `name` | yes | Hazard identifier surfaced in the API |
-| `labels` | yes | YOLO class names that trigger this rule |
-| `severity` | yes | `low \| medium \| high \| critical` |
-| `description` | yes | Human-readable alert text |
-| `near_labels` | no | Only fire when near one of these labels |
-| `proximity_px` | no | L-infinity pixel distance threshold (default 200) |
-| `aspect_ratio_min` | no | `bbox_width / bbox_height` minimum (fallen-person heuristic) |
+| `log_level` | `info` | `debug` / `info` / `warning` / `error` |
 
 ---
 
-## YOLO model selection
+## GPU vendor support
 
-YOLO26 is the current generation. Ultralytics model files are downloaded
-automatically on first use. Refer to the
-[Ultralytics documentation](https://docs.ultralytics.com/) for current
-benchmark numbers.
+All GPU-specific logic lives in Triton configs, not in SAS. Both NVIDIA and
+Intel Arc GPUs are supported with identical SAS client code:
 
-| Model | Use case |
-| ----- | -------- |
-| `yolo26x.pt` | Highest accuracy (default) |
-| `yolo26l.pt` | Good accuracy/speed balance |
-| `yolo26m.pt` | Lower-power deployments |
+| GPU | Triton setup |
+| --- | ------------ |
+| NVIDIA | Default `config.pbtxt` (TensorRT EP / CUDA EP) |
+| Intel Arc | `python triton-models/scripts/configure_gpu.py --vendor intel` |
 
-Set `SAS_YOLO_MODEL_NAME=yolo26l.pt` to trade accuracy for speed.
+SAS itself needs no GPU drivers, PyTorch, or vendor-specific libraries.
+
+---
+
+## Legacy: in-process inference (without Triton)
+
+SAS retains legacy in-process backends for development and fallback. Install
+the full PyTorch stack:
+
+```bash
+uv sync --extra inference
+```
+
+Then set backends in `config/config.yaml`:
+
+```yaml
+triton_url: ""                     # disable Triton
+inference_backend: ultralytics     # YOLO via PyTorch
+clip_backend: openclip             # CLIP via OpenCLIP
+florence_backend: transformers     # Florence-2 via HF Transformers
+```
+
+GPU acceleration requires additional setup (CUDA wheels or Intel IPEX).
+Prefer Triton backends for production.
 
 ---
 
@@ -266,10 +192,13 @@ scene-analysis-service/
 │   │   └── health.py          # GET  /health
 │   └── services/
 │       ├── analyzer.py        # SceneAnalyzer orchestrator
-│       ├── detector.py        # UltralyticsDetector + OnnxRuntimeDetector + NullDetector
-│       ├── describer.py       # Florence-2 wrapper + NullDescriber
-│       ├── embedder.py        # CLIP wrapper + NullEmbedder
-│       ├── device.py          # Device resolution (auto/cuda/xpu/openvino/vulkan/cpu)
+│       ├── detector.py        # Detector ABC + build_detector()
+│       ├── triton_detector.py # TritonDetector (YOLO via gRPC)
+│       ├── describer.py       # SceneDescriber ABC + build_describer()
+│       ├── triton_describer.py# TritonFlorenceDescriber (Florence-2 via gRPC)
+│       ├── embedder.py        # ImageEmbedder ABC + build_embedder()
+│       ├── triton_embedder.py # TritonClipEmbedder (CLIP via gRPC)
+│       ├── device.py          # PyTorch device resolution (legacy backends)
 │       └── hazards.py         # HazardRuleEngine (pure, YAML-driven)
 ├── config/
 │   ├── config.yaml            # Default service config
@@ -301,8 +230,8 @@ uv run pytest
 uv run pytest --cov=app --cov-report=term-missing
 ```
 
-Tests do not require inference dependencies. All model components are replaced
-by `Null*` stubs in the test fixtures.
+Tests do not require Triton or inference dependencies. All model components
+are replaced by `Null*` stubs.
 
 ### Lint and format
 
@@ -310,13 +239,6 @@ by `Null*` stubs in the test fixtures.
 uv run ruff check app/ tests/
 uv run ruff format app/ tests/
 ```
-
-### Interactive API docs
-
-With the service running, visit:
-
-- Swagger UI: `http://localhost:8300/docs`
-- ReDoc: `http://localhost:8300/redoc`
 
 ---
 
@@ -328,27 +250,15 @@ Enable it by setting `scene_analysis.enabled: true` and
 `scene_analysis.base_url: http://scene-analysis:8300` in the backend's
 `settings.yaml`.
 
-The `scene_analysis` pipeline step (`backend/steps/builtin/scene_analysis.py`)
-calls `SceneAnalysisClient.analyze()` and writes results into the
-`pipeline_data` dict under the keys `scene_detections`, `scene_description`,
-`scene_embedding`, `scene_hazards`, and the three `scene_*_available` flags.
-
-See `cognitive-companion/docker-compose.yml` for the commented-out service
-block that can be uncommented to run this service alongside the backend.
-
 ---
 
-## Graceful degradation
+## Dependencies
 
-The service is designed to remain fully operational at every level of
-capability:
-
-| Inference deps | Behaviour |
-| -------------- | --------- |
-| None installed | All `Null*` stubs; `/health` returns `detector_available: false`, all result lists empty |
-| `ultralytics` only | Detection works; description and embedding return empty |
-| All `[inference]` deps | Full pipeline |
-| `[onnxruntime]` + ONNX model | YOLO via ORT with configurable EP; Florence-2 and CLIP on CPU |
-
-The `*_available` fields in every response indicate which components are
-active, letting callers adapt downstream logic accordingly.
+| Dependency | Purpose | Required? |
+|-----------|---------|-----------|
+| `triton-shared` | Shared Triton client + pre/post processing | Yes (base) |
+| `tritonclient[all]` | Triton gRPC client | Yes (production) |
+| `tokenizers` | Florence-2 task prompt tokenization | Yes (base) |
+| `fastapi` + `uvicorn` | HTTP API server | Yes (base) |
+| `pillow` + `numpy` | Image handling | Yes (base) |
+| `torch` + `transformers` + `open_clip_torch` | Legacy in-process backends | Optional (`inference` extra) |

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 
 from PIL import Image
 
@@ -132,11 +133,46 @@ def build_describer(
     model_name: str,
     device: str,
     task: str,
+    backend: str = "transformers",
+    triton_client: Any | None = None,
+    tokenizer_dir: Any | None = None,
 ) -> SceneDescriber:
-    """Construct a :class:`SceneDescriber` from config values."""
+    """Construct a :class:`SceneDescriber` from config values.
+
+    Args:
+        enabled: When ``False`` a :class:`NullDescriber` is returned.
+        model_name: HF model ID or Triton model name.
+        device: PyTorch device string (``transformers`` backend only).
+        task: Florence task prompt.
+        backend: ``"transformers"`` (default) or ``"triton"``.
+        triton_client: Pre-connected Triton client for the ``triton`` backend.
+        tokenizer_dir: Path to directory containing ``tokenizer.json``
+            (``triton`` backend only).
+    """
     if not enabled:
         logger.info("florence_disabled returning_null_describer")
         return NullDescriber()
+
+    if backend == "triton":
+        if triton_client is None:
+            logger.warning("triton_backend_requires_client returning_null_describer")
+            return NullDescriber()
+        try:
+            from app.services.triton_describer import TritonFlorenceDescriber
+
+            return TritonFlorenceDescriber(
+                client=triton_client,
+                model_name=model_name,
+                task=task,
+                tokenizer_dir=tokenizer_dir,
+            )
+        except (ImportError, RuntimeError) as exc:
+            logger.warning(
+                "triton_describer_init_failed error=%s returning_null_describer", exc
+            )
+            return NullDescriber()
+
+    # Default: transformers backend
     try:
         return FlorenceDescriber(model_name=model_name, device=device, task=task)
     except RuntimeError:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from PIL import Image
 
@@ -206,11 +207,18 @@ def create_from_settings(cfg: Settings) -> SceneAnalyzer:
         ort_input_size=cfg.get("ort_input_size", 640),
         triton_client=triton_client,
     )
+    florence_backend: str = cfg.get("florence_backend", "triton")
+    florence_tokenizer_dir: str = cfg.get("florence_tokenizer_dir", "")
     describer = build_describer(
         enabled=cfg.get("florence_enabled", True),
-        model_name=cfg.get("florence_model_name", "microsoft/Florence-2-large"),
+        model_name=cfg.get("florence_model_name", "florence-2"),
         device=device,
         task=cfg.get("florence_task", "<DETAILED_CAPTION>"),
+        backend=florence_backend,
+        triton_client=triton_client if florence_backend == "triton" else None,
+        tokenizer_dir=(
+            Path(florence_tokenizer_dir) if florence_tokenizer_dir else None
+        ),
     )
     clip_backend: str = cfg.get("clip_backend", "triton")
     embedder = build_embedder(
