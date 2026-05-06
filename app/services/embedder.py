@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 
 from PIL import Image
 
@@ -127,11 +128,38 @@ def build_embedder(
     model_name: str,
     pretrained: str,
     device: str,
+    backend: str = "openclip",
+    triton_client: Any | None = None,
 ) -> ImageEmbedder:
-    """Construct an :class:`ImageEmbedder` from config values."""
+    """Construct an :class:`ImageEmbedder` from config values.
+
+    Args:
+        enabled: When ``False`` a :class:`NullEmbedder` is returned.
+        model_name: OpenCLIP architecture name or Triton model name.
+        pretrained: Pretrained weights tag (OpenCLIP backend only).
+        device: PyTorch device string (OpenCLIP backend only).
+        backend: ``"openclip"`` (default) or ``"triton"``.
+        triton_client: Pre-connected Triton client for the ``triton`` backend.
+    """
     if not enabled:
         logger.info("clip_disabled returning_null_embedder")
         return NullEmbedder()
+
+    if backend == "triton":
+        if triton_client is None:
+            logger.warning("triton_backend_requires_client returning_null_embedder")
+            return NullEmbedder()
+        try:
+            from app.services.triton_embedder import TritonClipEmbedder
+
+            return TritonClipEmbedder(client=triton_client, model_name=model_name)
+        except ImportError as exc:
+            logger.warning(
+                "triton_embedder_import_failed error=%s returning_null_embedder", exc
+            )
+            return NullEmbedder()
+
+    # Default: openclip backend
     try:
         return CLIPEmbedder(model_name=model_name, pretrained=pretrained, device=device)
     except RuntimeError:

@@ -55,9 +55,12 @@ florence_enabled: true
 florence_model_name: "microsoft/Florence-2-large"
 florence_task: "<DETAILED_CAPTION>"   # or <CAPTION>, <OD>, etc.
 
-# ── Image embeddings (CLIP ViT-L/14 via OpenCLIP) ────────────────────────────
+# ── Image embeddings (CLIP ViT-L/14) ──────────────────────────────────────────
+# Backend: "triton" (calls clip-vision model on Triton) or "openclip" (in-process).
+# model_name is the Triton model name when backend=triton.
 clip_enabled: true
-clip_model_name: "ViT-L-14"
+clip_backend: triton
+clip_model_name: "clip-vision"
 clip_pretrained: "openai"
 
 # ── Hazard detection ──────────────────────────────────────────────────────────

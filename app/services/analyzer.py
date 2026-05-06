@@ -212,11 +212,14 @@ def create_from_settings(cfg: Settings) -> SceneAnalyzer:
         device=device,
         task=cfg.get("florence_task", "<DETAILED_CAPTION>"),
     )
+    clip_backend: str = cfg.get("clip_backend", "triton")
     embedder = build_embedder(
         enabled=cfg.get("clip_enabled", True),
-        model_name=cfg.get("clip_model_name", "ViT-L-14"),
+        model_name=cfg.get("clip_model_name", "clip-vision"),
         pretrained=cfg.get("clip_pretrained", "openai"),
         device=device,
+        backend=clip_backend,
+        triton_client=triton_client if clip_backend == "triton" else None,
     )
     hazard_engine = HazardRuleEngine(
         config_path=cfg.get("hazards_config_path", "config/hazards.yaml")
