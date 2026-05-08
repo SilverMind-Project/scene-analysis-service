@@ -1,73 +1,26 @@
 # scene-analysis-service default configuration
 # All values can be overridden via environment variables prefixed with SAS_
-# (e.g. SAS_DEVICE=cuda, SAS_TRITON_URL=localhost:8001)
+# (e.g. SAS_TRITON_URL=localhost:8701)
 
 # ── Triton Inference Server ──────────────────────────────────────────────────
-# When inference_backend=triton, SAS calls the Triton gRPC API at this URL for
-# YOLO object detection.  Leave empty to disable the Triton backend.
+# gRPC endpoint for Triton Inference Server.
+# Leave empty to fall back to Null implementations (service starts but does no inference).
 triton_url: ""
 
-# ── Device ────────────────────────────────────────────────────────────────────
-# auto      CUDA -> XPU -> CPU (highest-capability available)
-# cuda      NVIDIA GPU via PyTorch CUDA
-# xpu       Intel Arc GPU via Intel Extension for PyTorch (IPEX)
-# openvino  Intel OpenVINO — PyTorch components (Florence-2, CLIP) fall back
-#           to CPU; YOLO can use OpenVINO natively with a _openvino_model/ export
-# vulkan    Experimental Vulkan EP via ONNX Runtime; PyTorch falls back to CPU
-# cpu       CPU fallback
-device: auto
-
-# ── Inference backend ─────────────────────────────────────────────────────────
-# triton        Use Triton Inference Server (ONNX, shared with CTS).
-#               Requires SAS_TRITON_URL to be set.
-# ultralytics   Use Ultralytics YOLO (supports .pt, .onnx, openvino formats)
-# onnxruntime   Use onnxruntime.InferenceSession directly with explicit EP
-#               control.  Requires a pre-exported ONNX model — see below.
-inference_backend: triton
-
-# ── ONNX Runtime execution providers (inference_backend=onnxruntime only) ─────
-# Leave empty to derive from the device setting automatically:
-#   cuda     -> [CUDAExecutionProvider, CPUExecutionProvider]
-#   xpu      -> [OpenVINOExecutionProvider, CPUExecutionProvider]
-#   openvino -> [OpenVINOExecutionProvider, CPUExecutionProvider]
-#   vulkan   -> [VulkanExecutionProvider, CPUExecutionProvider]
-#   cpu      -> [CPUExecutionProvider]
-#
-# Override explicitly if needed:
-#   ort_providers: [OpenVINOExecutionProvider, CPUExecutionProvider]
-ort_providers: []
-
-# Square input size passed to OnnxRuntimeDetector (must match the ONNX export).
-ort_input_size: 640
-
 # ── Object detection (YOLO26L via Triton) ─────────────────────────────────────
-# model_name is the Triton model name.
-# For the ultralytics backend: path to .pt file or Ultralytics model ID.
-# For the onnxruntime backend: path to a pre-exported .onnx file.
 yolo_enabled: true
 yolo_model_name: "person-detector"
 yolo_confidence_threshold: 0.25
-yolo_iou_threshold: 0.45
-yolo_max_detections: 100
 
-# ── Scene description (Florence-2-large) ──────────────────────────────────────
-# Backend: "triton" (calls florence-2 model on Triton Python backend)
-#          or "transformers" (in-process via HuggingFace Transformers + PyTorch).
-# model_name is the Triton model name when backend=triton.
-# tokenizer_dir points to the directory containing tokenizer.json.
+# ── Scene description (Florence-2-large via Triton) ───────────────────────────
 florence_enabled: true
-florence_backend: triton
 florence_model_name: "florence-2"
 florence_tokenizer_dir: "../continuous-tracking/triton-models/florence-2/1"
 florence_task: "<DETAILED_CAPTION>"   # or <CAPTION>, <OD>, etc.
 
-# ── Image embeddings (CLIP ViT-L/14) ──────────────────────────────────────────
-# Backend: "triton" (calls clip-vision model on Triton) or "openclip" (in-process).
-# model_name is the Triton model name when backend=triton.
+# ── Image embeddings (CLIP ViT-L/14 via Triton) ───────────────────────────────
 clip_enabled: true
-clip_backend: triton
 clip_model_name: "clip-vision"
-clip_pretrained: "openai"
 
 # ── Hazard detection ──────────────────────────────────────────────────────────
 hazards_config_path: "config/hazards.yaml"

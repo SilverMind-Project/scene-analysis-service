@@ -14,9 +14,6 @@ All inference runs via **Triton Inference Server** (shared with
 # Install base deps (API + Triton client + tokenizers)
 uv sync
 
-# Install Triton gRPC client (required for production inference)
-uv sync --extra triton
-
 # Install dev deps
 uv sync --group dev
 
@@ -27,7 +24,7 @@ uv run uvicorn app.main:app --reload --port 8300
 uv run ruff check app/ tests/
 uv run ruff format app/ tests/
 
-# Tests (no inference deps required)
+# Tests (no Triton connection required)
 uv run pytest
 
 # Tests with coverage
@@ -35,9 +32,6 @@ uv run pytest --cov=app --cov-report=term-missing
 
 # Build Docker image (lightweight — no PyTorch)
 docker build -t scene-analysis-service .
-
-# Legacy: Install full in-process inference stack (PyTorch-based, non-Triton)
-uv sync --extra inference
 ```
 
 ---
@@ -49,19 +43,18 @@ uv sync --extra inference
 ```text
 app/
 ├── config.py           Settings - YAML + SAS_ env overrides
-├── main.py             FastAPI factory + lifespan (model loading)
+├── main.py             FastAPI factory + lifespan (Triton client setup)
 ├── models/
 │   └── schemas.py      Pydantic I/O models
 ├── routers/            One file per endpoint group
 └── services/
     ├── analyzer.py         SceneAnalyzer orchestrator (wired at startup)
-    ├── detector.py         Detector ABC + TritonDetector + UltralyticsDetector + NullDetector
-    ├── triton_detector.py  YOLO26L via Triton gRPC (default backend)
-    ├── describer.py        SceneDescriber ABC + TritonFlorenceDescriber + FlorenceDescriber + NullDescriber
-    ├── triton_describer.py Florence-2 via Triton Python backend (default)
-    ├── embedder.py         ImageEmbedder ABC + TritonClipEmbedder + CLIPEmbedder + NullEmbedder
-    ├── triton_embedder.py  CLIP ViT-L/14 via Triton gRPC (default backend)
-    ├── device.py           resolve_device() — PyTorch device for legacy in-process backends only
+    ├── detector.py         Detector ABC + NullDetector + build_detector()
+    ├── triton_detector.py  YOLO26L via Triton gRPC
+    ├── describer.py        SceneDescriber ABC + NullDescriber + build_describer()
+    ├── triton_describer.py Florence-2 via Triton gRPC
+    ├── embedder.py         ImageEmbedder ABC + NullEmbedder + build_embedder()
+    ├── triton_embedder.py  CLIP ViT-L/14 via Triton gRPC
     └── hazards.py          HazardRuleEngine - pure YAML-driven rule evaluator
 ```
 
@@ -77,10 +70,7 @@ class Detector(ABC):          # Abstract base
     @abstractmethod
     def is_available(self) -> bool: ...
 
-class TritonDetector(Detector):        # Triton gRPC backend (default)
-    ...
-
-class UltralyticsDetector(Detector):   # Legacy PyTorch backend
+class TritonDetector(Detector):        # Triton gRPC backend
     ...
 
 class NullDetector(Detector):          # Graceful fallback
@@ -89,8 +79,8 @@ class NullDetector(Detector):          # Graceful fallback
     def is_available(self): return False
 ```
 
-`build_detector()` (and equivalents) catches `RuntimeError` from import
-failures and returns `NullDetector`. The service always starts successfully.
+`build_detector()` catches `ImportError` from missing deps and returns
+`NullDetector`. The service always starts successfully.
 
 ### SceneAnalyzer
 
@@ -125,8 +115,8 @@ handled by Triton's ONNX Runtime backend — no client-side GPU detection.
 Models are INT8-quantized for performance. See
 `../continuous-tracking/triton-models/` for configs and export/download scripts.
 
-The shared Triton client library lives in `../triton-shared/` and is imported
-by both SAS and CTS. It provides:
+The shared Triton client library (`triton-shared`) is pulled from
+`github.com/SilverMind-Project/triton-shared` and provides:
 - `TritonClientProtocol` — structural interface for test mocking
 - `TritonGrpcClient` — async gRPC client
 - Pre/post processing functions for each model
@@ -140,44 +130,16 @@ through a worker thread (see tech-debt #1).
 
 ---
 
-## Inference Backends
-
-Each component supports multiple backends via its `build_*()` factory.
-
-### Detector backends
-
-| Backend | Config key | Implementation | Notes |
-|---------|-----------|----------------|-------|
-| `triton` *(default)* | `inference_backend: triton` | `TritonDetector` | Calls YOLO26L on Triton via gRPC |
-| `ultralytics` | `inference_backend: ultralytics` | `UltralyticsDetector` | Legacy in-process PyTorch |
-| `onnxruntime` | `inference_backend: onnxruntime` | `OnnxRuntimeDetector` | Legacy in-process ONNX Runtime |
-
-### Embedder backends
-
-| Backend | Config key | Implementation | Notes |
-|---------|-----------|----------------|-------|
-| `triton` *(default)* | `clip_backend: triton` | `TritonClipEmbedder` | Calls CLIP on Triton via gRPC |
-| `openclip` | `clip_backend: openclip` | `CLIPEmbedder` | Legacy in-process OpenCLIP + PyTorch |
-
-### Describer backends
-
-| Backend | Config key | Implementation | Notes |
-|---------|-----------|----------------|-------|
-| `triton` *(default)* | `florence_backend: triton` | `TritonFlorenceDescriber` | Calls Florence-2 on Triton via gRPC |
-| `transformers` | `florence_backend: transformers` | `FlorenceDescriber` | Legacy in-process HF Transformers + PyTorch |
-
----
-
 ## Configuration
 
 `config/config.yaml` is the source of truth. Every key maps to a `SAS_`
 prefixed environment variable:
 
 ```bash
-SAS_TRITON_URL=localhost:8001
-SAS_INFERENCE_BACKEND=triton
-SAS_CLIP_BACKEND=triton
-SAS_FLORENCE_BACKEND=triton
+SAS_TRITON_URL=localhost:8701
+SAS_YOLO_MODEL_NAME=person-detector
+SAS_FLORENCE_MODEL_NAME=florence-2
+SAS_CLIP_MODEL_NAME=clip-vision
 ```
 
 `Settings.__getattr__` raises `AttributeError` for missing keys - do not add
@@ -187,15 +149,13 @@ fallback logic, raise early.
 
 | Key | Default | Description |
 | --- | ------- | ----------- |
-| `triton_url` | `""` | Triton gRPC endpoint (empty = Triton backends fall back to Null) |
-| `inference_backend` | `triton` | `triton` / `ultralytics` / `onnxruntime` |
-| `yolo_model_name` | `person-detector` | Triton model name or .pt/.onnx path |
-| `clip_backend` | `triton` | `triton` / `openclip` |
-| `clip_model_name` | `clip-vision` | Triton model name or OpenCLIP architecture |
-| `florence_backend` | `triton` | `triton` / `transformers` |
-| `florence_model_name` | `florence-2` | Triton model name or HF model ID |
+| `triton_url` | `""` | Triton gRPC endpoint (empty = all components fall back to Null) |
+| `yolo_model_name` | `person-detector` | Triton model name for YOLO26L |
+| `yolo_confidence_threshold` | `0.25` | Minimum detection confidence |
+| `clip_model_name` | `clip-vision` | Triton model name for CLIP |
+| `florence_model_name` | `florence-2` | Triton model name for Florence-2 |
 | `florence_tokenizer_dir` | `../continuous-tracking/triton-models/florence-2/1` | Path to tokenizer.json |
-| `device` | `auto` | PyTorch device for legacy backends only |
+| `florence_task` | `<DETAILED_CAPTION>` | Florence task prompt |
 
 ---
 
@@ -271,21 +231,6 @@ class _SpyDetector(NullDetector):
 2. Call it from `_check_rule()` using a new YAML key.
 3. Add a test case to `tests/test_hazard_engine.py`.
 
-### Switch a component to legacy in-process backend
-
-Set the relevant backend config key and ensure the inference extras are
-installed:
-
-```bash
-uv sync --extra inference
-```
-
-```yaml
-inference_backend: ultralytics
-clip_backend: openclip
-florence_backend: transformers
-```
-
 ---
 
 ## Known tech debt
@@ -295,11 +240,9 @@ Items intentionally deferred - fix before shipping anything performance-critical
 | # | File | Issue | Effort |
 | - | ---- | ----- | ------ |
 | 1 | `services/analyzer.py` | `analyze()` is synchronous; blocks the uvicorn event loop. Triton backends dispatch gRPC calls from worker threads as a workaround. Make `analyze` async and `await` Triton calls directly. | Medium |
-| 2 | `services/device.py` | `resolve_device()` and `onnxruntime_providers()` only needed for legacy in-process backends. Can be removed once those backends are retired. | Small |
-| 3 | `app/config.py` | `_coerce()` has no list handler - `SAS_ORT_PROVIDERS` cannot be set via env var (the YAML default is a list, so the env key is silently skipped). | Small |
-| 4 | `tests/test_analyzer.py` | `_SpyDetector._called` counter in `TestRunFlags` is dead code - the MagicMock wrapper is used for all assertions. Remove the counter. | Trivial |
-| 5 | `app/models/schemas.py` | `EmbedResponse` schema exists but there is no `/embed` standalone endpoint - only `/analyze` returns embeddings. Add `app/routers/embed.py`. | Small |
-| 6 | `services/triton_*.py` | `_run_in_thread()` pattern is duplicated across triton_detector, triton_embedder, triton_describer. Extract to a shared utility. | Small |
+| 2 | `tests/test_analyzer.py` | `_SpyDetector._called` counter in `TestRunFlags` is dead code - the MagicMock wrapper is used for all assertions. Remove the counter. | Trivial |
+| 3 | `app/models/schemas.py` | `EmbedResponse` schema exists but there is no `/embed` standalone endpoint - only `/analyze` returns embeddings. Add `app/routers/embed.py`. | Small |
+| 4 | `services/triton_*.py` | `_run_in_thread()` pattern is duplicated across triton_detector, triton_embedder, triton_describer. Extract to a shared utility. | Small |
 
 ---
 

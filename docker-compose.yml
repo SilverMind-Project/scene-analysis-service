@@ -1,55 +1,37 @@
 # Scene Analysis Service — Docker Compose
 #
-# Multi-modal scene analysis: YOLO object detection, Florence-2 structured
-# descriptions, and CLIP image embeddings.
+# Multi-modal scene analysis via Triton Inference Server.
 #
 # Usage:
 #   docker compose up -d
 #
-# Build with inference deps (required for actual model inference):
-#   docker compose build --build-arg EXTRAS=inference
-#
-# Requires: NVIDIA Container Toolkit for GPU support.
-# Place model weights (e.g. yolo26x.pt) in ./data/ before starting.
+# Requires: Triton Inference Server running (shared with continuous-tracking).
 
 services:
   scene-analysis:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        EXTRAS: "inference"          # set to "inference" to include torch/ultralytics
     container_name: scene-analysis-service
     restart: unless-stopped
     ports:
       - "8300:8300"
     environment:
-      SAS_DEVICE: "auto"                            # auto | cuda | cpu | openvino
+      SAS_TRITON_URL: "triton:8701"
       SAS_YOLO_ENABLED: "true"
-      SAS_YOLO_MODEL_NAME: "/app/data/yolo26x.pt"  # pre-loaded from ./data mount
       SAS_FLORENCE_ENABLED: "true"
       SAS_CLIP_ENABLED: "true"
       SAS_LOG_LEVEL: "info"
-      HF_HOME: "/app/.cache/huggingface"
-      TORCH_HOME: "/app/.cache/torch"
-      YOLO_CONFIG_DIR: "/app/.cache/ultralytics"
-    volumes:
-      - ./data:/app/data:ro                  # local model weights (read-only)
-      - scene-analysis-models:/app/.cache    # HuggingFace + torch + YOLO cache
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    networks:
+      - nanai
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8300/health')"]
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 60s    # model loading can take time on first start
+      start_period: 30s
 
-volumes:
-  scene-analysis-models:
-    driver: local
+networks:
+  nanai:
+    name: nanai
+    external: true

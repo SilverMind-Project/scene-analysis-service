@@ -19,7 +19,6 @@ from PIL import Image
 from app.config import Settings
 from app.services.describer import SceneDescriber, build_describer
 from app.services.detector import Detection, Detector, build_detector
-from app.services.device import onnxruntime_providers, resolve_device
 from app.services.embedder import ImageEmbedder, build_embedder
 from app.services.hazards import HazardAlert, HazardRuleEngine
 
@@ -169,15 +168,10 @@ def create_from_settings(cfg: Settings) -> SceneAnalyzer:
 
     This is the canonical factory used by ``app.main`` during application startup.
     """
-    device_setting = cfg.get("device", "auto")
-    device = resolve_device(device_setting)
-
-    inference_backend: str = cfg.get("inference_backend", "ultralytics")
     triton_url: str = cfg.get("triton_url", "")
 
-    # Resolve Triton client when triton backend is requested.
     triton_client = None
-    if inference_backend == "triton" and triton_url:
+    if triton_url:
         try:
             from triton_shared.client.grpc import TritonGrpcClient
 
@@ -185,50 +179,33 @@ def create_from_settings(cfg: Settings) -> SceneAnalyzer:
             logger.info("triton_client_created url=%s", triton_url)
         except ImportError as exc:
             logger.warning(
-                "triton_client_import_failed error=%s falling_back=null_detector", exc
+                "triton_client_import_failed error=%s falling_back=null", exc
             )
-
-    ort_providers_cfg: list[str] = cfg.get("ort_providers", []) or []
-    ort_providers = (
-        ort_providers_cfg
-        if ort_providers_cfg
-        else onnxruntime_providers(device_setting)
-    )
 
     detector = build_detector(
         enabled=cfg.get("yolo_enabled", True),
         model_name=cfg.get("yolo_model_name", "person-detector"),
-        device=device,
         confidence_threshold=cfg.get("yolo_confidence_threshold", 0.25),
-        iou_threshold=cfg.get("yolo_iou_threshold", 0.45),
-        max_detections=cfg.get("yolo_max_detections", 100),
-        backend=inference_backend,
-        ort_providers=ort_providers if inference_backend == "onnxruntime" else None,
-        ort_input_size=cfg.get("ort_input_size", 640),
         triton_client=triton_client,
     )
-    florence_backend: str = cfg.get("florence_backend", "triton")
+
     florence_tokenizer_dir: str = cfg.get("florence_tokenizer_dir", "")
     describer = build_describer(
         enabled=cfg.get("florence_enabled", True),
         model_name=cfg.get("florence_model_name", "florence-2"),
-        device=device,
         task=cfg.get("florence_task", "<DETAILED_CAPTION>"),
-        backend=florence_backend,
-        triton_client=triton_client if florence_backend == "triton" else None,
+        triton_client=triton_client,
         tokenizer_dir=(
             Path(florence_tokenizer_dir) if florence_tokenizer_dir else None
         ),
     )
-    clip_backend: str = cfg.get("clip_backend", "triton")
+
     embedder = build_embedder(
         enabled=cfg.get("clip_enabled", True),
         model_name=cfg.get("clip_model_name", "clip-vision"),
-        pretrained=cfg.get("clip_pretrained", "openai"),
-        device=device,
-        backend=clip_backend,
-        triton_client=triton_client if clip_backend == "triton" else None,
+        triton_client=triton_client,
     )
+
     hazard_engine = HazardRuleEngine(
         config_path=cfg.get("hazards_config_path", "config/hazards.yaml")
     )

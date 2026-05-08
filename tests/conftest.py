@@ -1,8 +1,8 @@
 """Shared pytest fixtures for scene-analysis-service tests.
 
-Tests run without inference dependencies (torch, ultralytics, transformers,
-open_clip_torch) — all model components are replaced with Null* stubs so
-tests focus on orchestration logic, hazard rules, schemas, and the API layer.
+Tests run without Triton dependencies — all model components are replaced
+with Null* stubs so tests focus on orchestration logic, hazard rules,
+schemas, and the API layer.
 """
 
 from __future__ import annotations

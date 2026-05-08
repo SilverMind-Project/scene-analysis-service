@@ -39,7 +39,7 @@ unavailable (graceful degradation via `Null*` stubs).
 
 ```bash
 uv sync --extra triton
-SAS_TRITON_URL=localhost:8001 uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
+SAS_TRITON_URL=localhost:8701 uv run uvicorn app.main:app --host 0.0.0.0 --port 8300
 ```
 
 ### Without Triton (API only, all Null stubs)
@@ -56,7 +56,7 @@ The service starts and all endpoints return empty results with
 
 ```bash
 docker build -t scene-analysis-service .
-docker run -p 8300:8300 -e SAS_TRITON_URL=triton:8001 scene-analysis-service
+docker run -p 8300:8300 -e SAS_TRITON_URL=triton:8701 scene-analysis-service
 ```
 
 The Docker image is ~200 MB — no PyTorch, no GPU drivers.
@@ -114,7 +114,7 @@ Configuration is read from `config/config.yaml` at startup. Every key can be
 overridden with an environment variable prefixed `SAS_` (uppercased), e.g.:
 
 ```bash
-SAS_TRITON_URL=triton:8001
+SAS_TRITON_URL=triton:8701
 SAS_YOLO_ENABLED=false
 SAS_PORT=8200
 ```

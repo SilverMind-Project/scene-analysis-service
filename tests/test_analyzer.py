@@ -1,7 +1,7 @@
 """Tests for :class:`~app.services.analyzer.SceneAnalyzer` and its helpers.
 
-All inference components are replaced with Null stubs so no GPU or model
-files are required.  Tests focus on orchestration logic and the
+All inference components are replaced with Null stubs so no Triton
+connection is required.  Tests focus on orchestration logic and the
 ``analyze()`` method flags.
 """
 

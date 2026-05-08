@@ -11,10 +11,9 @@ Startup sequence
 
 Graceful degradation
 --------------------
-If inference dependencies (``ultralytics``, ``transformers``, ``open_clip_torch``)
-are not installed, the corresponding ``Null*`` implementations are used and
-the service starts successfully.  The ``/health`` endpoint reflects which
-components are available.
+If the Triton client cannot be imported or ``triton_url`` is empty, the
+corresponding ``Null*`` implementations are used and the service starts
+successfully.  The ``/health`` endpoint reflects which components are available.
 """
 
 from __future__ import annotations
