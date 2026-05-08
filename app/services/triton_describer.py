@@ -20,9 +20,6 @@ from app.services.describer import SceneDescriber
 
 logger = logging.getLogger(__name__)
 
-# Default directory for tokenizer files (downloaded alongside ONNX models).
-_DEFAULT_TOKENIZER_DIR = Path("triton-models/florence-2/1")
-
 
 def _run_in_thread(coro: Any) -> Any:
     """Run an async coroutine from sync code by spinning a fresh event loop in a worker thread."""
@@ -66,17 +63,16 @@ class TritonFlorenceDescriber(SceneDescriber):
                 "Install with: pip install tokenizers"
             )
 
-        tok_dir = tokenizer_dir or _DEFAULT_TOKENIZER_DIR
-        tokenizer_path = tok_dir / "tokenizer.json"
-        if not tokenizer_path.exists():
+        tokenizer_path = tokenizer_dir / "tokenizer.json" if tokenizer_dir else None
+        if tokenizer_path is None or not tokenizer_path.exists():
             raise RuntimeError(
                 f"Tokenizer not found at {tokenizer_path}. "
-                "Download from onnx-community/Florence-2-large or set tokenizer_dir."
+                "Download from onnx-community/Florence-2-large or set florence_tokenizer_dir."
             )
         self._tokenizer = Tokenizer.from_file(str(tokenizer_path))
 
         # Load special tokens for decoding.
-        config_path = tok_dir / "tokenizer_config.json"
+        config_path = tokenizer_dir / "tokenizer_config.json"
         self._skip_special_tokens = False
         if config_path.exists():
             with open(config_path) as f:

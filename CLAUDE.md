@@ -154,7 +154,7 @@ fallback logic, raise early.
 | `yolo_confidence_threshold` | `0.25` | Minimum detection confidence |
 | `clip_model_name` | `clip-vision` | Triton model name for CLIP |
 | `florence_model_name` | `florence-2` | Triton model name for Florence-2 |
-| `florence_tokenizer_dir` | `../continuous-tracking/triton-models/florence-2/1` | Path to tokenizer.json |
+| `florence_tokenizer_dir` | `/models/florence-2/1` | Path to tokenizer.json |
 | `florence_task` | `<DETAILED_CAPTION>` | Florence task prompt |
 
 ---

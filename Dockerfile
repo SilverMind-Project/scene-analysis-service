@@ -40,6 +40,13 @@ RUN groupadd -r sas && useradd -r -g sas sas
 WORKDIR /app
 COPY --chown=sas:sas . .
 
+USER root
+
+# Download Florence-2 tokenizer files (needed by TritonFlorenceDescriber)
+RUN mkdir -p /models/florence-2/1 && \
+    python -c "from urllib.request import urlretrieve; urlretrieve('https://huggingface.co/onnx-community/Florence-2-large/resolve/main/tokenizer.json', '/models/florence-2/1/tokenizer.json')" && \
+    python -c "from urllib.request import urlretrieve; urlretrieve('https://huggingface.co/onnx-community/Florence-2-large/resolve/main/tokenizer_config.json', '/models/florence-2/1/tokenizer_config.json')"
+
 USER sas
 
 EXPOSE 8300

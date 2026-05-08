@@ -15,7 +15,7 @@ yolo_confidence_threshold: 0.25
 # ── Scene description (Florence-2-large via Triton) ───────────────────────────
 florence_enabled: true
 florence_model_name: "florence-2"
-florence_tokenizer_dir: "../continuous-tracking/triton-models/florence-2/1"
+florence_tokenizer_dir: "/models/florence-2/1"
 florence_task: "<DETAILED_CAPTION>"   # or <CAPTION>, <OD>, etc.
 
 # ── Image embeddings (CLIP ViT-L/14 via Triton) ───────────────────────────────

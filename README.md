@@ -130,7 +130,7 @@ SAS_PORT=8200
 | `clip_model_name` | `clip-vision` | Triton model name |
 | `florence_backend` | `triton` | Describer: `triton` / `transformers` |
 | `florence_model_name` | `florence-2` | Triton model name |
-| `florence_tokenizer_dir` | `../continuous-tracking/triton-models/florence-2/1` | Tokenizer path |
+| `florence_tokenizer_dir` | `/models/florence-2/1` | Tokenizer path |
 | `device` | `auto` | PyTorch device (legacy backends only) |
 | `yolo_confidence_threshold` | `0.25` | Detection confidence floor |
 | `max_image_size_px` | `1920` | Longest edge limit; larger images downscaled |
