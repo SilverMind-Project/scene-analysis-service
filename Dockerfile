@@ -26,6 +26,11 @@ WORKDIR /app
 # ── deps stage ─────────────────────────────────────────────────────────────
 FROM base AS deps
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml .
 RUN uv pip install --system --no-cache .
 
