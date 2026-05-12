@@ -1,7 +1,6 @@
 # scene-analysis-service - Claude guidance
 
-Standalone FastAPI microservice for multi-modal scene analysis. Part of the
-cognitive-companion monorepo (`/home/sriram/code/nanai/`).
+Standalone FastAPI microservice for multi-modal scene analysis. Part of cognitive-companion.
 
 All inference runs via **Triton Inference Server** (shared with
 `continuous-tracking`). SAS itself has no GPU runtime or PyTorch dependency.
