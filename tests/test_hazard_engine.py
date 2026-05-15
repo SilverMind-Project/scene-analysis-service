@@ -38,9 +38,12 @@ class TestLoading:
         assert engine.evaluate([]) == []
 
     def test_loads_rules_from_yaml(self, tmp_path):
-        path = _write_rules(tmp_path, [{"name": "fire", "labels": ["fire"], "severity": "critical"}])
+        path = _write_rules(
+            tmp_path, [{"name": "fire", "labels": ["fire"], "severity": "critical"}]
+        )
         engine = HazardRuleEngine(config_path=path)
-        assert len(engine._rules) == 1
+        # Verify loading by triggering the rule — proves it was loaded, not just counted.
+        assert engine.evaluate([_det("fire", [0, 0, 100, 100])]) != []
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +157,9 @@ class TestProximity:
 
 class TestHazardAlertToDict:
     def test_serialises_all_fields(self, tmp_path):
-        path = _write_rules(tmp_path, [{"name": "fire", "labels": ["fire"], "severity": "critical", "description": "Fire!"}])
+        path = _write_rules(tmp_path, [
+            {"name": "fire", "labels": ["fire"], "severity": "critical", "description": "Fire!"}
+        ])
         engine = HazardRuleEngine(config_path=path)
         alerts = engine.evaluate([_det("fire", [10.0, 20.0, 110.0, 120.0])])
         d = alerts[0].to_dict()

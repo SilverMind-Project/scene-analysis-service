@@ -9,10 +9,12 @@ corresponding config flag is false, so the caller always gets a valid
 
 from __future__ import annotations
 
+import contextlib
 import io
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -95,7 +97,7 @@ class SceneAnalyzer:
     # Public API
     # ------------------------------------------------------------------
 
-    def analyze(
+    async def analyze(
         self,
         image_bytes: bytes,
         *,
@@ -120,17 +122,17 @@ class SceneAnalyzer:
 
         detections: list[Detection] = []
         if run_detect and self._detector.is_available:
-            detections = self._detector.detect(image)
+            detections = await self._detector.detect(image)
             logger.debug("detect_done count=%d", len(detections))
 
         description = ""
         if run_describe and self._describer.is_available:
-            description = self._describer.describe(image)
+            description = await self._describer.describe(image)
             logger.debug("describe_done length=%d", len(description))
 
         embedding: list[float] = []
         if run_embed and self._embedder.is_available:
-            embedding = self._embedder.embed(image)
+            embedding = await self._embedder.embed(image)
             logger.debug("embed_done dim=%d", len(embedding))
 
         hazards: list[HazardAlert] = []
@@ -163,25 +165,38 @@ class SceneAnalyzer:
         return image
 
 
-def create_from_settings(cfg: Settings) -> SceneAnalyzer:
-    """Build a :class:`SceneAnalyzer` from a :class:`~app.config.Settings` instance.
+def create_triton_client(
+    cfg: Settings,
+) -> tuple[Any | None, contextlib.AbstractAsyncContextManager[Any]]:
+    """Instantiate a TritonGrpcClient and return it alongside its async context manager.
 
-    This is the canonical factory used by ``app.main`` during application startup.
+    Returns ``(None, AsyncExitStack())`` when ``triton_url`` is empty or the
+    import fails, so the caller can unconditionally ``async with ctx``.
     """
     triton_url: str = cfg.get("triton_url", "")
+    if not triton_url:
+        return None, contextlib.AsyncExitStack()
+    try:
+        from triton_shared.client.grpc import TritonGrpcClient
 
-    triton_client = None
-    if triton_url:
-        try:
-            from triton_shared.client.grpc import TritonGrpcClient
+        timeout_ms: int = cfg.get("triton_timeout_ms", 30_000)
+        client = TritonGrpcClient(triton_url, timeout_ms=timeout_ms)
+        logger.info("triton_client_created url=%s timeout_ms=%d", triton_url, timeout_ms)
+        return client, client
+    except ImportError as exc:
+        logger.warning("triton_client_import_failed error=%s falling_back=null", exc)
+        return None, contextlib.AsyncExitStack()
 
-            triton_client = TritonGrpcClient(triton_url)
-            logger.info("triton_client_created url=%s", triton_url)
-        except ImportError as exc:
-            logger.warning(
-                "triton_client_import_failed error=%s falling_back=null", exc
-            )
 
+def create_from_settings(
+    cfg: Settings, *, triton_client: Any | None = None
+) -> SceneAnalyzer:
+    """Build a :class:`SceneAnalyzer` from a :class:`~app.config.Settings` instance.
+
+    ``triton_client`` should be an already-opened :class:`TritonGrpcClient`
+    (i.e. entered via ``async with``). When ``None``, all Triton-backed
+    components fall back to their ``Null*`` stubs.
+    """
     detector = build_detector(
         enabled=cfg.get("yolo_enabled", True),
         model_name=cfg.get("yolo_model_name", "person-detector"),

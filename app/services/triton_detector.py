@@ -6,8 +6,6 @@ YOLO26L decode logic from ``triton_shared``.
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import logging
 from typing import Any
 
@@ -17,21 +15,6 @@ from PIL import Image
 from app.services.detector import Detection, Detector
 
 logger = logging.getLogger(__name__)
-
-
-def _run_in_thread(coro: Any) -> Any:
-    """Run an async coroutine from sync code by spinning a fresh event loop in a worker thread.
-
-    This avoids ``asyncio.run()`` clashing with an already-running event loop
-    (e.g. inside a FastAPI async route handler that calls synchronous
-    ``SceneAnalyzer.analyze()`` — see tech-debt #1 in CLAUDE.md).
-    """
-
-    def _target() -> Any:
-        return asyncio.run(coro)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(_target).result()
 
 
 class TritonDetector(Detector):
@@ -44,6 +27,11 @@ class TritonDetector(Detector):
         confidence_threshold: Minimum detection confidence.
     """
 
+    # The ONNX model was exported with a fixed batch dimension of 16, so Triton
+    # requires exactly that shape. We tile a single image to fill the batch and
+    # take only the first output row.
+    _BATCH_SIZE = 16
+
     def __init__(
         self,
         client: Any,  # TritonClientProtocol (avoid import at module level)
@@ -54,12 +42,8 @@ class TritonDetector(Detector):
         self._model_name = model_name
         self._conf = confidence_threshold
 
-    def detect(self, image: Image.Image) -> list[Detection]:
-        """Run YOLO26L detection on a PIL image via Triton.
-
-        The Triton gRPC call is dispatched from a worker thread so this
-        method remains synchronous (required by the ``Detector`` ABC).
-        """
+    async def detect(self, image: Image.Image) -> list[Detection]:
+        """Run YOLO26L detection on a PIL image via Triton."""
         from triton_shared.inference.detection import (
             DETECTOR_INPUT_SIZE,
             DETECTOR_PERSON_CLASS,
@@ -69,16 +53,15 @@ class TritonDetector(Detector):
 
         rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
         tensor, pad_x, pad_y, scale = letterbox_preprocess(rgb, DETECTOR_INPUT_SIZE)
-        batch = np.expand_dims(tensor, axis=0)  # (1, 3, 640, 640)
+        # Tile to fixed batch size required by the exported ONNX model.
+        batch = np.tile(np.expand_dims(tensor, axis=0), (self._BATCH_SIZE, 1, 1, 1))
 
-        outputs = _run_in_thread(
-            self._client.infer(
-                model_name=self._model_name,
-                inputs=[("images", batch)],
-                output_names=["output0"],
-            )
+        outputs = await self._client.infer(
+            model_name=self._model_name,
+            inputs=[("images", batch)],
+            output_names=["output0"],
         )
-        raw = outputs["output0"][0]  # (300, 6)
+        raw = outputs["output0"][0]  # (300, 6) — first image's detections
 
         boxes = decode_output(
             raw,

@@ -28,7 +28,7 @@ async def describe(
         raise HTTPException(status_code=422, detail="Empty image upload")
 
     try:
-        result = analyzer.analyze(
+        result = await analyzer.analyze(
             image_bytes,
             run_detect=False,
             run_describe=True,

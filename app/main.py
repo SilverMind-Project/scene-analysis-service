@@ -26,7 +26,7 @@ from fastapi import FastAPI
 
 from app.config import Settings
 from app.routers import analyze, describe, detect, health
-from app.services.analyzer import SceneAnalyzer, create_from_settings
+from app.services.analyzer import SceneAnalyzer, create_from_settings, create_triton_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +45,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     _configure_logging(cfg.get("log_level", "info"))
 
     logger.info("scene_analysis_service_starting")
-    analyzer: SceneAnalyzer = create_from_settings(cfg)
-    app.state.analyzer = analyzer
-    logger.info(
-        "scene_analysis_service_ready "
-        "detector=%s describer=%s embedder=%s",
-        analyzer.detector_available,
-        analyzer.describer_available,
-        analyzer.embedder_available,
-    )
+    triton_client, triton_ctx = create_triton_client(cfg)
+    async with triton_ctx:
+        analyzer: SceneAnalyzer = create_from_settings(cfg, triton_client=triton_client)
+        app.state.analyzer = analyzer
+        logger.info(
+            "scene_analysis_service_ready "
+            "detector=%s describer=%s embedder=%s",
+            analyzer.detector_available,
+            analyzer.describer_available,
+            analyzer.embedder_available,
+        )
 
-    yield
+        yield
 
     logger.info("scene_analysis_service_stopping")
 

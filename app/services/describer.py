@@ -31,7 +31,7 @@ class SceneDescriber(ABC):
     """Abstract structured scene describer."""
 
     @abstractmethod
-    def describe(self, image: Image.Image) -> str:
+    async def describe(self, image: Image.Image) -> str:
         """Return a structured text description of *image*."""
         ...
 
@@ -45,7 +45,7 @@ class SceneDescriber(ABC):
 class NullDescriber(SceneDescriber):
     """No-op describer for graceful degradation."""
 
-    def describe(self, image: Image.Image) -> str:
+    async def describe(self, image: Image.Image) -> str:
         return ""
 
     @property

@@ -6,8 +6,6 @@ CLIP preprocessing from ``triton_shared``.
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import logging
 from typing import Any
 
@@ -17,16 +15,6 @@ from PIL import Image
 from app.services.embedder import ImageEmbedder
 
 logger = logging.getLogger(__name__)
-
-
-def _run_in_thread(coro: Any) -> Any:
-    """Run an async coroutine from sync code by spinning a fresh event loop in a worker thread."""
-
-    def _target() -> Any:
-        return asyncio.run(coro)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(_target).result()
 
 
 class TritonClipEmbedder(ImageEmbedder):
@@ -46,7 +34,7 @@ class TritonClipEmbedder(ImageEmbedder):
         self._model_name = model_name
         self._dim: int = 768
 
-    def embed(self, image: Image.Image) -> list[float]:
+    async def embed(self, image: Image.Image) -> list[float]:
         """Return an L2-normalised CLIP embedding for *image*."""
         from triton_shared.inference.embedding import (
             CLIP_INPUT_SIZE,
@@ -57,12 +45,10 @@ class TritonClipEmbedder(ImageEmbedder):
         tensor = clip_preprocess(image, CLIP_INPUT_SIZE)
         batch = np.expand_dims(tensor, axis=0)
 
-        outputs = _run_in_thread(
-            self._client.infer(
-                model_name=self._model_name,
-                inputs=[("input", batch)],
-                output_names=["output"],
-            )
+        outputs = await self._client.infer(
+            model_name=self._model_name,
+            inputs=[("input", batch)],
+            output_names=["output"],
         )
         raw = outputs["output"]  # (1, 768)
         return clip_postprocess(raw[0])

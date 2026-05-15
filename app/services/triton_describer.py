@@ -6,8 +6,6 @@ Florence-2 ONNX models served by Triton's Python backend.
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import json
 import logging
 from pathlib import Path
@@ -19,16 +17,6 @@ from PIL import Image
 from app.services.describer import SceneDescriber
 
 logger = logging.getLogger(__name__)
-
-
-def _run_in_thread(coro: Any) -> Any:
-    """Run an async coroutine from sync code by spinning a fresh event loop in a worker thread."""
-
-    def _target() -> Any:
-        return asyncio.run(coro)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(_target).result()
 
 
 class TritonFlorenceDescriber(SceneDescriber):
@@ -48,8 +36,6 @@ class TritonFlorenceDescriber(SceneDescriber):
         task: str = "<DETAILED_CAPTION>",
         tokenizer_dir: Path | None = None,
     ) -> None:
-        from triton_shared.inference.description import TASK_DETAILED_CAPTION
-
         self._client = client
         self._model_name = model_name
         self._task = task
@@ -57,11 +43,11 @@ class TritonFlorenceDescriber(SceneDescriber):
         # Load tokenizer (Rust-based, no torch dependency).
         try:
             from tokenizers import Tokenizer
-        except ImportError:
+        except ImportError as exc:
             raise RuntimeError(
                 "tokenizers is required for TritonFlorenceDescriber. "
                 "Install with: pip install tokenizers"
-            )
+            ) from exc
 
         tokenizer_path = tokenizer_dir / "tokenizer.json" if tokenizer_dir else None
         if tokenizer_path is None or not tokenizer_path.exists():
@@ -86,7 +72,7 @@ class TritonFlorenceDescriber(SceneDescriber):
             tokenizer_path,
         )
 
-    def describe(self, image: Image.Image) -> str:
+    async def describe(self, image: Image.Image) -> str:
         """Return a structured caption for *image*."""
         from triton_shared.inference.description import (
             florence_preprocess,
@@ -101,15 +87,13 @@ class TritonFlorenceDescriber(SceneDescriber):
         input_ids = np.array([input_ids_list], dtype=np.int64)
 
         # Run inference via Triton.
-        outputs = _run_in_thread(
-            self._client.infer(
-                model_name=self._model_name,
-                inputs=[
-                    ("pixel_values", pixel_values.astype(np.float32)),
-                    ("input_ids", input_ids),
-                ],
-                output_names=["output_ids"],
-            )
+        outputs = await self._client.infer(
+            model_name=self._model_name,
+            inputs=[
+                ("pixel_values", pixel_values.astype(np.float32)),
+                ("input_ids", input_ids),
+            ],
+            output_names=["output_ids"],
         )
         raw_ids = outputs["output_ids"][0]  # (max_len,)
 

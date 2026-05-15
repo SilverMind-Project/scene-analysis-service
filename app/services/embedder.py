@@ -25,7 +25,7 @@ class ImageEmbedder(ABC):
     """Abstract image embedder."""
 
     @abstractmethod
-    def embed(self, image: Image.Image) -> list[float]:
+    async def embed(self, image: Image.Image) -> list[float]:
         """Return a normalised embedding vector for *image*.
 
         Returns an empty list when the model is unavailable.
@@ -48,7 +48,7 @@ class ImageEmbedder(ABC):
 class NullEmbedder(ImageEmbedder):
     """No-op embedder for graceful degradation."""
 
-    def embed(self, image: Image.Image) -> list[float]:
+    async def embed(self, image: Image.Image) -> list[float]:
         return []
 
     @property

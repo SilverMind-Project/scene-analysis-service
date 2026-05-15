@@ -7,6 +7,8 @@ schemas, and the API layer.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -29,14 +31,22 @@ def null_analyzer(tmp_path) -> SceneAnalyzer:
 
 
 @pytest.fixture()
-def test_client(null_analyzer) -> TestClient:
-    """FastAPI TestClient with the null_analyzer pre-wired on app.state."""
+def test_client(null_analyzer: SceneAnalyzer):
+    """FastAPI TestClient with a null lifespan that pre-wires the null_analyzer.
+
+    The real lifespan is replaced so no config files or Triton connections are
+    needed — component availability is determined entirely by ``null_analyzer``.
+    """
     from app.main import create_app
 
     application = create_app()
-    application.state.analyzer = null_analyzer
 
-    # Bypass the lifespan (which would load real models) by using the
-    # TestClient without entering startup events.
+    @asynccontextmanager
+    async def _null_lifespan(app):
+        app.state.analyzer = null_analyzer
+        yield
+
+    application.router.lifespan_context = _null_lifespan
+
     with TestClient(application, raise_server_exceptions=True) as client:
         yield client

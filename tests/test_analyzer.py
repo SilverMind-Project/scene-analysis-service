@@ -1,25 +1,32 @@
 """Tests for :class:`~app.services.analyzer.SceneAnalyzer` and its helpers.
 
-All inference components are replaced with Null stubs so no Triton
-connection is required.  Tests focus on orchestration logic and the
-``analyze()`` method flags.
+All inference components are replaced with Null stubs or minimal subclasses
+so no Triton connection is required.  Tests cover orchestration logic, the
+run_* flags, image downscaling, and the factory functions added for the
+TritonGrpcClient lifecycle fix.
 """
 
 from __future__ import annotations
 
+import contextlib
 import io
-from unittest.mock import MagicMock
 
+import pytest
 from PIL import Image
 
-from app.services.analyzer import AnalysisResult, SceneAnalyzer
+from app.services.analyzer import (
+    AnalysisResult,
+    SceneAnalyzer,
+    create_from_settings,
+    create_triton_client,
+)
 from app.services.describer import NullDescriber
 from app.services.detector import NullDetector
 from app.services.embedder import NullEmbedder
 from app.services.hazards import HazardRuleEngine
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -35,7 +42,7 @@ def _make_analyzer(
     describer=None,
     embedder=None,
     hazard_engine=None,
-    max_px=1920,
+    max_px: int = 1920,
 ) -> SceneAnalyzer:
     return SceneAnalyzer(
         detector=detector or NullDetector(),
@@ -52,7 +59,7 @@ def _make_analyzer(
 
 
 class TestAnalysisResult:
-    def test_to_dict_structure(self):
+    def test_to_dict_includes_all_fields(self):
         result = AnalysisResult(
             detections=[],
             description="empty room",
@@ -67,6 +74,9 @@ class TestAnalysisResult:
         assert d["embedding"] == [0.1, 0.2]
         assert d["describer_available"] is True
         assert d["detector_available"] is False
+        assert d["embedder_available"] is True
+        assert d["detections"] == []
+        assert d["hazards"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -75,9 +85,9 @@ class TestAnalysisResult:
 
 
 class TestNullComponents:
-    def test_analyze_with_all_nulls_returns_empty_result(self):
+    async def test_analyze_with_all_nulls_returns_empty_result(self):
         analyzer = _make_analyzer()
-        result = analyzer.analyze(_tiny_image_bytes())
+        result = await analyzer.analyze(_tiny_image_bytes())
         assert result.detections == []
         assert result.description == ""
         assert result.embedding == []
@@ -86,12 +96,6 @@ class TestNullComponents:
         assert result.describer_available is False
         assert result.embedder_available is False
 
-    def test_analyze_still_succeeds_on_large_image(self):
-        """Images larger than max_px should be downscaled without error."""
-        analyzer = _make_analyzer(max_px=32)
-        result = analyzer.analyze(_tiny_image_bytes(width=200, height=200))
-        assert isinstance(result, AnalysisResult)
-
 
 # ---------------------------------------------------------------------------
 # run_* flags
@@ -99,73 +103,97 @@ class TestNullComponents:
 
 
 class TestRunFlags:
-    """Use subclasses (not class-level property mutation) so tests don't leak state."""
+    """Spy subclasses verify that components are called/skipped per flag."""
 
-    def _spy_detector(self):
+    def _make_spy_detector(self):
         class _SpyDetector(NullDetector):
-            """Detector that reports as available and records calls."""
+            def __init__(self):
+                self.calls = 0
+
             @property
             def is_available(self) -> bool:
                 return True
 
-            def detect(self, image):
-                self.__class__._called += 1
+            async def detect(self, image):
+                self.calls += 1
                 return []
 
-        _SpyDetector._called = 0
-        d = _SpyDetector()
-        d.detect = MagicMock(wraps=d.detect)
-        return d
+        return _SpyDetector()
 
-    def _spy_describer(self):
+    def _make_spy_describer(self):
         class _SpyDescriber(NullDescriber):
+            def __init__(self):
+                self.calls = 0
+
             @property
             def is_available(self) -> bool:
                 return True
 
-            def describe(self, image):
+            async def describe(self, image):
+                self.calls += 1
                 return "a kitchen"
 
-        d = _SpyDescriber()
-        d.describe = MagicMock(wraps=d.describe)
-        return d
+        return _SpyDescriber()
 
-    def _spy_embedder(self):
+    def _make_spy_embedder(self):
         class _SpyEmbedder(NullEmbedder):
+            def __init__(self):
+                self.calls = 0
+
             @property
             def is_available(self) -> bool:
                 return True
 
-            def embed(self, image):
+            async def embed(self, image):
+                self.calls += 1
                 return [0.1] * 768
 
-        e = _SpyEmbedder()
-        e.embed = MagicMock(wraps=e.embed)
-        return e
+        return _SpyEmbedder()
 
-    def test_run_detect_false_skips_detector(self):
-        detector = self._spy_detector()
-        analyzer = _make_analyzer(detector=detector)
-        analyzer.analyze(_tiny_image_bytes(), run_detect=False)
-        detector.detect.assert_not_called()
+    async def test_run_detect_false_skips_detector(self):
+        spy = self._make_spy_detector()
+        await _make_analyzer(detector=spy).analyze(_tiny_image_bytes(), run_detect=False)
+        assert spy.calls == 0
 
-    def test_run_describe_false_skips_describer(self):
-        describer = self._spy_describer()
-        analyzer = _make_analyzer(describer=describer)
-        analyzer.analyze(_tiny_image_bytes(), run_describe=False)
-        describer.describe.assert_not_called()
+    async def test_run_detect_true_calls_detector(self):
+        spy = self._make_spy_detector()
+        await _make_analyzer(detector=spy).analyze(_tiny_image_bytes(), run_detect=True)
+        assert spy.calls == 1
 
-    def test_run_embed_false_skips_embedder(self):
-        embedder = self._spy_embedder()
-        analyzer = _make_analyzer(embedder=embedder)
-        analyzer.analyze(_tiny_image_bytes(), run_embed=False)
-        embedder.embed.assert_not_called()
+    async def test_run_describe_false_skips_describer(self):
+        spy = self._make_spy_describer()
+        await _make_analyzer(describer=spy).analyze(_tiny_image_bytes(), run_describe=False)
+        assert spy.calls == 0
 
-    def test_run_detect_true_calls_detector(self):
-        detector = self._spy_detector()
-        analyzer = _make_analyzer(detector=detector)
-        analyzer.analyze(_tiny_image_bytes(), run_detect=True)
-        detector.detect.assert_called_once()
+    async def test_run_embed_false_skips_embedder(self):
+        spy = self._make_spy_embedder()
+        await _make_analyzer(embedder=spy).analyze(_tiny_image_bytes(), run_embed=False)
+        assert spy.calls == 0
+
+    async def test_run_all_false_returns_empty_result(self):
+        spy_det = self._make_spy_detector()
+        spy_desc = self._make_spy_describer()
+        spy_emb = self._make_spy_embedder()
+        result = await _make_analyzer(
+            detector=spy_det, describer=spy_desc, embedder=spy_emb
+        ).analyze(
+            _tiny_image_bytes(),
+            run_detect=False,
+            run_describe=False,
+            run_embed=False,
+            run_hazards=False,
+        )
+        assert spy_det.calls == 0
+        assert spy_desc.calls == 0
+        assert spy_emb.calls == 0
+        assert result.detections == []
+        assert result.description == ""
+        assert result.embedding == []
+
+    async def test_hazards_not_evaluated_when_no_detections(self):
+        """run_hazards=True with NullDetector → hazard engine never fires."""
+        result = await _make_analyzer().analyze(_tiny_image_bytes(), run_hazards=True)
+        assert result.hazards == []
 
 
 # ---------------------------------------------------------------------------
@@ -174,36 +202,86 @@ class TestRunFlags:
 
 
 class TestImageDownscaling:
-    def test_image_larger_than_max_is_resized(self):
-        captured_sizes: list[tuple[int, int]] = []
+    async def test_image_larger_than_max_is_resized(self):
+        received: list[tuple[int, int]] = []
 
         class _SpyDetector(NullDetector):
             @property
             def is_available(self) -> bool:
                 return True
 
-            def detect(self, image: Image.Image):
-                captured_sizes.append((image.width, image.height))
+            async def detect(self, image: Image.Image):
+                received.append((image.width, image.height))
                 return []
 
-        analyzer = _make_analyzer(detector=_SpyDetector(), max_px=32)
-        analyzer.analyze(_tiny_image_bytes(width=200, height=100))
-        # longest edge was 200; max_px=32 → should be scaled to 32×16
-        w, h = captured_sizes[0]
+        await _make_analyzer(detector=_SpyDetector(), max_px=32).analyze(
+            _tiny_image_bytes(width=200, height=100)
+        )
+        w, h = received[0]
         assert max(w, h) == 32
 
-    def test_image_within_max_is_not_resized(self):
-        captured_sizes: list[tuple[int, int]] = []
+    async def test_image_within_max_is_not_resized(self):
+        received: list[tuple[int, int]] = []
 
         class _SpyDetector(NullDetector):
             @property
             def is_available(self) -> bool:
                 return True
 
-            def detect(self, image: Image.Image):
-                captured_sizes.append((image.width, image.height))
+            async def detect(self, image: Image.Image):
+                received.append((image.width, image.height))
                 return []
 
-        analyzer = _make_analyzer(detector=_SpyDetector(), max_px=1920)
-        analyzer.analyze(_tiny_image_bytes(width=64, height=64))
-        assert captured_sizes[0] == (64, 64)
+        await _make_analyzer(detector=_SpyDetector(), max_px=1920).analyze(
+            _tiny_image_bytes(width=64, height=64)
+        )
+        assert received[0] == (64, 64)
+
+
+# ---------------------------------------------------------------------------
+# create_triton_client — lifecycle helpers introduced by the gRPC fix
+# ---------------------------------------------------------------------------
+
+
+class TestCreateTritonClient:
+    def test_returns_none_and_async_exit_stack_when_url_empty(self, tmp_path):
+        from app.config import Settings
+
+        cfg = Settings(yaml_path=tmp_path / "nonexistent.yaml")
+        client, ctx = create_triton_client(cfg)
+        assert client is None
+        assert isinstance(ctx, contextlib.AsyncExitStack)
+
+    @pytest.mark.asyncio
+    async def test_empty_url_context_enters_and_exits_cleanly(self, tmp_path):
+        from app.config import Settings
+
+        cfg = Settings(yaml_path=tmp_path / "nonexistent.yaml")
+        _, ctx = create_triton_client(cfg)
+        async with ctx:
+            pass  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# create_from_settings — factory
+# ---------------------------------------------------------------------------
+
+
+class TestCreateFromSettings:
+    def test_null_client_produces_null_analyzer(self, tmp_path):
+        from app.config import Settings
+
+        cfg = Settings(yaml_path=tmp_path / "nonexistent.yaml")
+        analyzer = create_from_settings(cfg, triton_client=None)
+        assert analyzer.detector_available is False
+        assert analyzer.describer_available is False
+        assert analyzer.embedder_available is False
+
+    async def test_analyze_runs_without_error_with_null_client(self, tmp_path):
+        from app.config import Settings
+
+        cfg = Settings(yaml_path=tmp_path / "nonexistent.yaml")
+        analyzer = create_from_settings(cfg, triton_client=None)
+        result = await analyzer.analyze(_tiny_image_bytes())
+        assert isinstance(result, AnalysisResult)
+        assert result.detections == []

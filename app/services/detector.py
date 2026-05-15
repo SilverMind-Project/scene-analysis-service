@@ -68,7 +68,7 @@ class Detector(ABC):
     """Abstract object detector."""
 
     @abstractmethod
-    def detect(self, image: Image.Image) -> list[Detection]:
+    async def detect(self, image: Image.Image) -> list[Detection]:
         """Run detection on a PIL image and return a list of detections."""
         ...
 
@@ -87,7 +87,7 @@ class Detector(ABC):
 class NullDetector(Detector):
     """No-op detector used when YOLO is disabled or unavailable."""
 
-    def detect(self, image: Image.Image) -> list[Detection]:
+    async def detect(self, image: Image.Image) -> list[Detection]:
         return []
 
     @property
